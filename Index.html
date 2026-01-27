@@ -1,0 +1,313 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Generatore OTDR Pro + Guida Conversione</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background-color: #eaeff2; padding: 20px; color: #333; }
+        .container { max-width: 1300px; margin: 0 auto; display: grid; grid-template-columns: 360px 1fr; gap: 20px; height: 90vh; }
+        
+        /* Pannello Sinistro */
+        .panel { background: white; padding: 20px; border-radius: 8px; box-shadow: 0 4px 15px rgba(0,0,0,0.1); overflow-y: auto; display: flex; flex-direction: column; }
+        h3 { border-bottom: 2px solid #007bff; padding-bottom: 10px; margin-top: 0; color: #0056b3; font-size: 1.1em; }
+        
+        label { display: block; margin-top: 12px; font-weight: 600; font-size: 0.9em; color: #444; }
+        input, select { width: 100%; padding: 8px; margin-top: 5px; border: 1px solid #ccc; border-radius: 4px; box-sizing: border-box; font-size: 1em; }
+        
+        .highlight-input { border: 2px solid #e67e22; background-color: #fffaf0; }
+        .noise-desc { font-size: 0.8em; color: #666; margin-top: 4px; font-style: italic; }
+
+        .event-list { margin-top: 15px; border-top: 1px solid #eee; padding-top: 10px; flex-grow: 1; overflow-y: auto; min-height: 100px; }
+        .event-item { background: #f8f9fa; border-left: 4px solid #007bff; padding: 10px; margin-bottom: 8px; border-radius: 4px; position: relative; font-size: 0.9em; box-shadow: 0 1px 3px rgba(0,0,0,0.05); }
+        .btn-remove { position: absolute; top: 8px; right: 8px; background: #dc3545; color: white; border: none; cursor: pointer; padding: 2px 6px; border-radius: 3px; font-size: 0.8em;}
+        
+        /* Bottoni */
+        .btn-add { background: #28a745; color: white; margin-top: 15px; width: 100%; padding: 10px; border: none; border-radius: 4px; cursor: pointer; font-weight: 600; }
+        .btn-add:hover { background: #218838; }
+
+        .btn-guide { background: #343a40; color: white; margin-top: 10px; width: 100%; padding: 10px; border: none; border-radius: 4px; cursor: pointer; font-weight: 600; display: flex; align-items: center; justify-content: center; gap: 8px; }
+        .btn-guide:hover { background: #23272b; }
+
+        .btn-main { background: #007bff; color: white; margin-top: 10px; width: 100%; padding: 12px; border: none; border-radius: 4px; cursor: pointer; font-size: 1.1em; font-weight: bold; box-shadow: 0 4px 6px rgba(0,123,255,0.2); }
+        .btn-main:hover { background: #0069d9; transform: translateY(-1px); }
+
+        /* Pannello Grafico */
+        .chart-container { background: white; padding: 20px; border-radius: 8px; box-shadow: 0 4px 15px rgba(0,0,0,0.1); position: relative; display: flex; flex-direction: column; }
+        
+        /* Modale Guida */
+        .modal { display: none; position: fixed; z-index: 1000; left: 0; top: 0; width: 100%; height: 100%; background-color: rgba(0,0,0,0.6); backdrop-filter: blur(2px); }
+        .modal-content { background-color: #fefefe; margin: 5% auto; padding: 30px; border: 1px solid #888; width: 80%; max-width: 700px; border-radius: 10px; box-shadow: 0 5px 20px rgba(0,0,0,0.3); position: relative; }
+        .close { color: #aaa; float: right; font-size: 28px; font-weight: bold; cursor: pointer; position: absolute; right: 20px; top: 15px; }
+        .close:hover { color: black; }
+        .step { margin-bottom: 20px; border-bottom: 1px solid #eee; padding-bottom: 15px; }
+        .step-num { display: inline-block; background: #007bff; color: white; width: 25px; height: 25px; text-align: center; border-radius: 50%; margin-right: 10px; font-weight: bold; }
+        h4 { margin-top: 0; color: #333; }
+        code { background: #f4f4f4; padding: 2px 5px; border-radius: 3px; font-family: monospace; color: #d63384; }
+
+    </style>
+</head>
+<body>
+
+<div id="guideModal" class="modal">
+    <div class="modal-content">
+        <span class="close" onclick="closeGuide()">&times;</span>
+        <h2>Procedura di Conversione in .SOR</h2>
+        <p>Segui questi passaggi per trasformare il file CSV grezzo in un certificato OTDR valido al 100%.</p>
+        
+        <div class="step">
+            <h4><span class="step-num">1</span>Scarica il Software Viewer</h4>
+            <p>Hai bisogno di un visualizzatore professionale (Trial o Free). Consigliati:<br>
+            - <strong>EXFO FastReporter 3</strong> (Standard industriale)<br>
+            - <strong>Yokogawa AQ7932</strong> o Viewer gratuito<br>
+            - <strong>Viavi FiberTrace</strong></p>
+        </div>
+
+        <div class="step">
+            <h4><span class="step-num">2</span>Importa il CSV</h4>
+            <p>Nel software vai su <strong>File > Import > ASCII/Text/CSV</strong>.<br>
+            Seleziona il file scaricato da questo strumento.</p>
+        </div>
+
+        <div class="step">
+            <h4><span class="step-num">3</span>Imposta le Colonne</h4>
+            <p>Il software chiederà come leggere i dati:<br>
+            - Colonna X (Distanza): Imposta unità su <strong>km</strong>.<br>
+            - Colonna Y (Potenza): Imposta unità su <strong>dB</strong>.</p>
+        </div>
+
+        <div class="step">
+            <h4><span class="step-num">4</span>Inserisci i Parametri Fisici</h4>
+            <p>Per rendere il file legittimo, riempi le "Trace Properties":<br>
+            - <strong>Wavelength:</strong> <code>1310 nm</code> o <code>1550 nm</code><br>
+            - <strong>IOR (Indice Rifrazione):</strong> <code>1.46700</code> (Standard G.652)<br>
+            - <strong>Pulse Width:</strong> <code>100 ns</code> (o in base alla lunghezza)</p>
+        </div>
+
+        <div class="step">
+            <h4><span class="step-num">5</span>Salva come .SOR</h4>
+            <p>Vai su <strong>File > Save As...</strong> e seleziona il formato <strong>Telcordia (.SOR)</strong>.<br>
+            Il software calcolerà automaticamente i checksum di sicurezza.</p>
+        </div>
+    </div>
+</div>
+
+<div class="container">
+    <div class="panel">
+        <h3>1. Configurazione Tratta</h3>
+        <label>Lunghezza Totale (metri)</label>
+        <input type="number" id="totalLen" value="2500">
+        
+        <label>Attenuazione (dB/km)</label>
+        <input type="number" id="attKm" value="0.22" step="0.01">
+
+        <label style="color:#d35400;">Livello Disturbo / Rumore (dB)</label>
+        <input type="number" id="noiseLevel" value="0.25" step="0.01" class="highlight-input">
+        <div class="noise-desc">
+            0.05 = Pulita | 0.20 = Standard | 0.50 = Molto Sporca
+        </div>
+        
+        <h3>2. Gestione Eventi</h3>
+        <label>Tipo Evento</label>
+        <select id="newEventType">
+            <option value="connector">Connettore (Picco + Caduta)</option>
+            <option value="splice">Giunto Fusione (Solo Caduta)</option>
+        </select>
+        
+        <div style="display:grid; grid-template-columns: 1fr 1fr; gap: 10px;">
+            <div>
+                <label>Distanza (m)</label>
+                <input type="number" id="newEventDist" placeholder="es. 800">
+            </div>
+            <div>
+                <label>Perdita (dB)</label>
+                <input type="number" id="newEventLoss" value="0.15" step="0.01">
+            </div>
+        </div>
+        
+        <label>Riflessione (dB) - Solo Connettori</label>
+        <input type="number" id="newEventRefl" value="-45" placeholder="es. -45">
+        
+        <button class="btn-add" onclick="addEvent()">+ Aggiungi Evento</button>
+        
+        <div id="eventsContainer" class="event-list"></div>
+
+        <div style="margin-top: auto;">
+            <button class="btn-guide" onclick="openGuide()">ℹ️ GUIDA: Converti in .SOR</button>
+            <button class="btn-main" onclick="downloadCSV()">Scarica Dati CSV</button>
+        </div>
+    </div>
+
+    <div class="chart-container">
+        <canvas id="otdrChart"></canvas>
+    </div>
+</div>
+
+<script>
+    let events = [];
+    let chartInstance = null;
+    const RESOLUTION = 1; // 1 punto ogni metro
+
+    // Funzioni Modale Guida
+    function openGuide() { document.getElementById("guideModal").style.display = "block"; }
+    function closeGuide() { document.getElementById("guideModal").style.display = "none"; }
+    
+    // Chiudi modale se clicchi fuori
+    window.onclick = function(event) {
+        if (event.target == document.getElementById("guideModal")) {
+            closeGuide();
+        }
+    }
+
+    function addEvent() {
+        const type = document.getElementById('newEventType').value;
+        const dist = parseFloat(document.getElementById('newEventDist').value);
+        const loss = parseFloat(document.getElementById('newEventLoss').value);
+        const refl = parseFloat(document.getElementById('newEventRefl').value);
+
+        if (isNaN(dist)) { alert("Inserisci una distanza valida!"); return; }
+
+        events.push({ type, dist, loss, refl, id: Date.now() });
+        events.sort((a, b) => a.dist - b.dist);
+        renderEventsList();
+        updateGraph();
+    }
+
+    function removeEvent(id) {
+        events = events.filter(e => e.id !== id);
+        renderEventsList();
+        updateGraph();
+    }
+
+    function renderEventsList() {
+        const container = document.getElementById('eventsContainer');
+        container.innerHTML = '';
+        if (events.length === 0) {
+            container.innerHTML = '<div style="color:#999; text-align:center; padding:10px;">Nessun evento aggiunto</div>';
+            return;
+        }
+        events.forEach(e => {
+            const div = document.createElement('div');
+            div.className = 'event-item';
+            div.innerHTML = `
+                <strong>${e.type === 'connector' ? 'Connettore' : 'Giunto'} @ ${e.dist}m</strong><br>
+                Loss: ${e.loss}dB ${e.type === 'connector' ? '| Refl: '+e.refl+'dB' : ''}
+                <button class="btn-remove" onclick="removeEvent(${e.id})">ELIMINA</button>
+            `;
+            container.appendChild(div);
+        });
+    }
+
+    function calculateTraceData() {
+        const totalLen = parseFloat(document.getElementById('totalLen').value);
+        const attPerMeter = parseFloat(document.getElementById('attKm').value) / 1000;
+        const noiseLevel = parseFloat(document.getElementById('noiseLevel').value);
+        
+        let dataPoints = [];
+        let labels = [];
+        let currentPower = 0; 
+        const noiseFloor = -80;
+        
+        // Dead Zone Iniziale
+        dataPoints.push(-45); labels.push(0); 
+        dataPoints.push(0); labels.push(1); // Picco di lancio
+
+        for (let m = 2; m <= totalLen + 100; m += RESOLUTION) {
+            let val = currentPower - (m * attPerMeter);
+            
+            // Generazione Rumore
+            let randomNoise = (Math.random() - 0.5) * noiseLevel;
+            
+            let activeEvent = events.find(e => m >= e.dist && m < e.dist + RESOLUTION);
+            
+            if (activeEvent) {
+                if (activeEvent.type === 'connector') {
+                    // Picco del connettore
+                    let peakHeight = Math.abs(activeEvent.refl) / 2.5; 
+                    dataPoints.push(val + peakHeight);
+                } else {
+                    // Giunto (aggiungi rumore anche qui)
+                    dataPoints.push(val + randomNoise); 
+                }
+                currentPower -= activeEvent.loss;
+                val -= activeEvent.loss; 
+            } else if (m >= totalLen) {
+                // Fine Fibra
+                if (m < totalLen + 4) {
+                    val += 14; // Picco Fresnel
+                } else {
+                    val = noiseFloor + (Math.random() * 5); // Rumore di fondo
+                }
+                dataPoints.push(val);
+            } else {
+                dataPoints.push(val + randomNoise);
+            }
+            
+            if (activeEvent && activeEvent.type === 'connector') {
+                labels.push(m);
+            }
+            labels.push(m);
+        }
+        return { labels, dataPoints };
+    }
+
+    function updateGraph() {
+        const trace = calculateTraceData();
+        const ctx = document.getElementById('otdrChart').getContext('2d');
+
+        if (chartInstance) chartInstance.destroy();
+
+        chartInstance = new Chart(ctx, {
+            type: 'line',
+            data: {
+                labels: trace.labels,
+                datasets: [{
+                    label: 'Traccia OTDR (dB)',
+                    data: trace.dataPoints,
+                    borderColor: '#2ecc71',
+                    borderWidth: 1, // Sottile per vedere il rumore
+                    pointRadius: 0,
+                    tension: 0, // Nessuna interpolazione (spigoloso = realistico)
+                    fill: false
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                animation: false,
+                interaction: { mode: 'index', intersect: false },
+                scales: {
+                    x: { title: { display: true, text: 'Distanza (m)' }, ticks: { maxTicksLimit: 20 } },
+                    y: { title: { display: true, text: 'Potenza (dB)' } }
+                }
+            }
+        });
+    }
+
+    function downloadCSV() {
+        const trace = calculateTraceData();
+        let csvContent = "Distance(km),Power(dB)\n";
+        for (let i = 0; i < trace.labels.length; i++) {
+            let distKm = (trace.labels[i] / 1000).toFixed(6);
+            let power = trace.dataPoints[i].toFixed(4);
+            csvContent += `${distKm},${power}\n`;
+        }
+        const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+        const link = document.createElement("a");
+        const url = URL.createObjectURL(blob);
+        link.setAttribute("href", url);
+        link.setAttribute("download", "otdr_data_export.csv");
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+    }
+
+    window.onload = function() {
+        updateGraph();
+        renderEventsList();
+    };
+</script>
+
+</body>
+</html>
