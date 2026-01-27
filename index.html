@@ -3,24 +3,24 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>OTDR Pro V6 - Controllo Totale</title>
+    <title>OTDR V7 Ultimate - Controllo Totale</title>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <style>
         body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background-color: #eaeff2; padding: 20px; color: #333; }
-        .container { max-width: 1300px; margin: 0 auto; display: grid; grid-template-columns: 360px 1fr; gap: 20px; height: 95vh; }
+        .container { max-width: 1400px; margin: 0 auto; display: grid; grid-template-columns: 380px 1fr; gap: 20px; height: 95vh; }
         
         /* Pannello Sinistro */
         .panel { background: white; padding: 20px; border-radius: 8px; box-shadow: 0 4px 15px rgba(0,0,0,0.1); overflow-y: auto; display: flex; flex-direction: column; }
         h3 { border-bottom: 2px solid #007bff; padding-bottom: 10px; margin-top: 0; color: #0056b3; font-size: 1.1em; }
         
-        label { display: block; margin-top: 12px; font-weight: 600; font-size: 0.9em; color: #444; }
+        label { display: block; margin-top: 10px; font-weight: 600; font-size: 0.9em; color: #444; }
         
         input[type="number"], select { width: 100%; padding: 8px; margin-top: 5px; border: 1px solid #ccc; border-radius: 4px; box-sizing: border-box; font-size: 1em; }
         input[type="range"] { width: 100%; margin-top: 10px; }
         
+        .box-control { border: 1px solid #ddd; background-color: #f8f9fa; padding: 10px; border-radius: 5px; margin-bottom: 10px;}
         .highlight-box { border: 2px solid #e67e22; background-color: #fffaf0; padding: 10px; border-radius: 5px; margin-top: 10px;}
-        .start-box { border: 2px solid #007bff; background-color: #f0f8ff; padding: 10px; border-radius: 5px; margin-bottom: 10px;}
-
+        
         .event-list { margin-top: 15px; border-top: 1px solid #eee; padding-top: 10px; flex-grow: 1; overflow-y: auto; min-height: 100px; }
         .event-item { background: #f8f9fa; border-left: 4px solid #007bff; padding: 10px; margin-bottom: 8px; border-radius: 4px; position: relative; font-size: 0.9em; box-shadow: 0 1px 3px rgba(0,0,0,0.05); }
         .btn-remove { position: absolute; top: 8px; right: 8px; background: #dc3545; color: white; border: none; cursor: pointer; padding: 2px 6px; border-radius: 3px; font-size: 0.8em;}
@@ -55,11 +55,17 @@
 
 <div class="container">
     <div class="panel">
-        <h3>1. Impostazioni Globali (Live)</h3>
+        <h3>1. Parametri Tratta</h3>
         
-        <div class="start-box">
-            <label style="margin-top:0; color:#0056b3;">Potenza Iniziale / Lancio (dB)</label>
-            <input type="number" id="startPower" value="0" step="0.5" oninput="updateGraph()" placeholder="Es. 0, 10, -5">
+        <div class="box-control">
+            <label style="margin-top:0; color:#0056b3;">Potenza Iniziale (dB)</label>
+            <input type="number" id="startPower" value="5" step="0.5" oninput="updateGraph()" placeholder="Es. 5.0">
+        </div>
+
+        <div class="box-control" style="background-color:#ffebeb; border-color:#ffcccc;">
+             <label style="margin-top:0; color:#c0392b;">Fine Fibra / Fondo (dB)</label>
+             <input type="number" id="floorLevel" value="-65" step="1" oninput="updateGraph()" placeholder="Es. -80 o -60">
+             <small style="color:#666; font-size:0.8em">Livello a cui cade il segnale dopo la fine</small>
         </div>
 
         <label>Lunghezza Totale (m)</label>
@@ -69,7 +75,7 @@
         <input type="number" id="attKm" value="0.22" step="0.01" oninput="updateGraph()">
 
         <div class="highlight-box">
-            <label style="color:#d35400; margin-top:0;">Livello Disturbo / Rumore</label>
+            <label style="color:#d35400; margin-top:0;">Livello Rumore Traccia (Sporcizia)</label>
             <input type="range" id="noiseSlider" min="0" max="1" step="0.01" value="0.25" oninput="syncNoise('slider')">
             <input type="number" id="noiseLevel" value="0.25" step="0.01" oninput="syncNoise('number')">
         </div>
@@ -167,33 +173,33 @@
         const attPerMeter = (parseFloat(document.getElementById('attKm').value) || 0.22) / 1000;
         const noiseLevel = parseFloat(document.getElementById('noiseLevel').value) || 0;
         
-        // NUOVO: Lettura potenza iniziale
+        // Lettura Potenza Iniziale
         let startPower = parseFloat(document.getElementById('startPower').value);
         if (isNaN(startPower)) startPower = 0;
+
+        // Lettura Livello di Fondo (Fine Fibra)
+        let floorLevel = parseFloat(document.getElementById('floorLevel').value);
+        if (isNaN(floorLevel)) floorLevel = -80; // Default di sicurezza
 
         let currentPower = startPower; 
         
         let dataPoints = [];
         let labels = [];
-        const noiseFloor = -80; // Soglia assoluta del rumore elettronico
         
-        // Simulazione Connettore Ingresso strumento (Picco di lancio)
-        // Partiamo bassi (rumore)
-        dataPoints.push(noiseFloor); labels.push(0); 
-        // Picco di saturazione iniziale (più alto della potenza di lancio)
-        dataPoints.push(startPower + 10); labels.push(1);
+        // Simulazione Inizio (Saturazione strumento)
+        dataPoints.push(floorLevel); labels.push(0); // Parte dal fondo
+        dataPoints.push(startPower + 8); labels.push(1); // Picco iniziale
 
-        for (let m = 2; m <= totalLen + 100; m += RESOLUTION) {
+        for (let m = 2; m <= totalLen + 150; m += RESOLUTION) {
             let val = currentPower - (m * attPerMeter);
             
-            // Generazione Rumore
+            // Rumore casuale
             let randomNoise = (Math.random() - 0.5) * noiseLevel;
             
             let activeEvent = events.find(e => m >= e.dist && m < e.dist + RESOLUTION);
             
             if (activeEvent) {
                 if (activeEvent.type === 'connector') {
-                    // Altezza picco relativa alla potenza attuale
                     let peakHeight = Math.abs(activeEvent.refl) / 2.5; 
                     dataPoints.push(val + peakHeight);
                 } else {
@@ -202,11 +208,13 @@
                 currentPower -= activeEvent.loss;
                 val -= activeEvent.loss; 
             } else if (m >= totalLen) {
-                // Fine Fibra
+                // GESTIONE FINE FIBRA
                 if (m < totalLen + 4) {
-                    val += 14; 
+                    val += 14; // Picco Fresnel finale (fisico)
                 } else {
-                    val = noiseFloor + (Math.random() * 5); 
+                    // Crollo al livello deciso dall'utente (floorLevel)
+                    // Aggiungiamo un rumore più forte sul fondo per realismo
+                    val = floorLevel + (Math.random() * 5); 
                 }
                 dataPoints.push(val);
             } else {
@@ -268,7 +276,7 @@
         const link = document.createElement("a");
         const url = URL.createObjectURL(blob);
         link.setAttribute("href", url);
-        link.setAttribute("download", "otdr_data_export.csv");
+        link.setAttribute("download", "otdr_custom_data.csv");
         document.body.appendChild(link);
         link.click();
         document.body.removeChild(link);
