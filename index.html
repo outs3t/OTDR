@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>OTDR Real-Time V5</title>
+    <title>OTDR Pro V6 - Controllo Totale</title>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <style>
         body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background-color: #eaeff2; padding: 20px; color: #333; }
@@ -15,26 +15,22 @@
         
         label { display: block; margin-top: 12px; font-weight: 600; font-size: 0.9em; color: #444; }
         
-        /* Input standard */
         input[type="number"], select { width: 100%; padding: 8px; margin-top: 5px; border: 1px solid #ccc; border-radius: 4px; box-sizing: border-box; font-size: 1em; }
-        
-        /* Input Slider per il rumore */
         input[type="range"] { width: 100%; margin-top: 10px; }
         
         .highlight-box { border: 2px solid #e67e22; background-color: #fffaf0; padding: 10px; border-radius: 5px; margin-top: 10px;}
+        .start-box { border: 2px solid #007bff; background-color: #f0f8ff; padding: 10px; border-radius: 5px; margin-bottom: 10px;}
 
         .event-list { margin-top: 15px; border-top: 1px solid #eee; padding-top: 10px; flex-grow: 1; overflow-y: auto; min-height: 100px; }
         .event-item { background: #f8f9fa; border-left: 4px solid #007bff; padding: 10px; margin-bottom: 8px; border-radius: 4px; position: relative; font-size: 0.9em; box-shadow: 0 1px 3px rgba(0,0,0,0.05); }
         .btn-remove { position: absolute; top: 8px; right: 8px; background: #dc3545; color: white; border: none; cursor: pointer; padding: 2px 6px; border-radius: 3px; font-size: 0.8em;}
         
-        /* Bottoni */
         .btn-add { background: #28a745; color: white; margin-top: 15px; width: 100%; padding: 10px; border: none; border-radius: 4px; cursor: pointer; font-weight: 600; }
         .btn-add:hover { background: #218838; }
 
         .btn-guide { background: #343a40; color: white; margin-top: 10px; width: 100%; padding: 10px; border: none; border-radius: 4px; cursor: pointer; font-weight: 600; }
         .btn-main { background: #007bff; color: white; margin-top: 10px; width: 100%; padding: 12px; border: none; border-radius: 4px; cursor: pointer; font-size: 1.1em; font-weight: bold; }
 
-        /* Pannello Grafico */
         .chart-container { background: white; padding: 20px; border-radius: 8px; box-shadow: 0 4px 15px rgba(0,0,0,0.1); position: relative; display: flex; flex-direction: column; }
         
         /* Modale */
@@ -52,9 +48,8 @@
         <p>1. Clicca <strong>Scarica Dati CSV</strong>.<br>
            2. Importa il file in <strong>EXFO FastReporter</strong> o <strong>Yokogawa Viewer</strong>.<br>
            3. Mappa Colonne: X = Distanza (km), Y = Potenza (dB).<br>
-           4. Imposta Wavelength: <strong>1310nm</strong> o <strong>1550nm</strong>.<br>
-           5. Imposta IOR: <strong>1.46700</strong>.<br>
-           6. <strong>File > Save As > .SOR</strong>.</p>
+           4. Imposta Parametri: 1310/1550nm, IOR 1.467.<br>
+           5. <strong>File > Save As > .SOR</strong>.</p>
     </div>
 </div>
 
@@ -62,6 +57,11 @@
     <div class="panel">
         <h3>1. Impostazioni Globali (Live)</h3>
         
+        <div class="start-box">
+            <label style="margin-top:0; color:#0056b3;">Potenza Iniziale / Lancio (dB)</label>
+            <input type="number" id="startPower" value="0" step="0.5" oninput="updateGraph()" placeholder="Es. 0, 10, -5">
+        </div>
+
         <label>Lunghezza Totale (m)</label>
         <input type="number" id="totalLen" value="2500" oninput="updateGraph()">
         
@@ -119,16 +119,12 @@
     function closeGuide() { document.getElementById("guideModal").style.display = "none"; }
     window.onclick = function(ev) { if (ev.target == document.getElementById("guideModal")) closeGuide(); }
 
-    // Sincronizza slider e numero per il rumore
     function syncNoise(source) {
         const slider = document.getElementById('noiseSlider');
         const number = document.getElementById('noiseLevel');
-        if (source === 'slider') {
-            number.value = slider.value;
-        } else {
-            slider.value = number.value;
-        }
-        updateGraph(); // Aggiorna il grafico in tempo reale
+        if (source === 'slider') { number.value = slider.value; } 
+        else { slider.value = number.value; }
+        updateGraph();
     }
 
     function addEvent() {
@@ -171,25 +167,33 @@
         const attPerMeter = (parseFloat(document.getElementById('attKm').value) || 0.22) / 1000;
         const noiseLevel = parseFloat(document.getElementById('noiseLevel').value) || 0;
         
+        // NUOVO: Lettura potenza iniziale
+        let startPower = parseFloat(document.getElementById('startPower').value);
+        if (isNaN(startPower)) startPower = 0;
+
+        let currentPower = startPower; 
+        
         let dataPoints = [];
         let labels = [];
-        let currentPower = 0; 
-        const noiseFloor = -80;
+        const noiseFloor = -80; // Soglia assoluta del rumore elettronico
         
-        // Lancio
-        dataPoints.push(-45); labels.push(0); 
-        dataPoints.push(0); labels.push(1);
+        // Simulazione Connettore Ingresso strumento (Picco di lancio)
+        // Partiamo bassi (rumore)
+        dataPoints.push(noiseFloor); labels.push(0); 
+        // Picco di saturazione iniziale (più alto della potenza di lancio)
+        dataPoints.push(startPower + 10); labels.push(1);
 
         for (let m = 2; m <= totalLen + 100; m += RESOLUTION) {
             let val = currentPower - (m * attPerMeter);
             
-            // Generazione Rumore Live
+            // Generazione Rumore
             let randomNoise = (Math.random() - 0.5) * noiseLevel;
             
             let activeEvent = events.find(e => m >= e.dist && m < e.dist + RESOLUTION);
             
             if (activeEvent) {
                 if (activeEvent.type === 'connector') {
+                    // Altezza picco relativa alla potenza attuale
                     let peakHeight = Math.abs(activeEvent.refl) / 2.5; 
                     dataPoints.push(val + peakHeight);
                 } else {
@@ -198,6 +202,7 @@
                 currentPower -= activeEvent.loss;
                 val -= activeEvent.loss; 
             } else if (m >= totalLen) {
+                // Fine Fibra
                 if (m < totalLen + 4) {
                     val += 14; 
                 } else {
@@ -219,10 +224,9 @@
         const ctx = document.getElementById('otdrChart').getContext('2d');
 
         if (chartInstance) {
-            // Aggiornamento ottimizzato per real-time
             chartInstance.data.labels = trace.labels;
             chartInstance.data.datasets[0].data = trace.dataPoints;
-            chartInstance.update('none'); // 'none' evita l'animazione lenta
+            chartInstance.update('none');
         } else {
             chartInstance = new Chart(ctx, {
                 type: 'line',
@@ -241,7 +245,7 @@
                 options: {
                     responsive: true,
                     maintainAspectRatio: false,
-                    animation: false, // Disattivata per velocità
+                    animation: false,
                     interaction: { mode: 'index', intersect: false },
                     scales: {
                         x: { title: { display: true, text: 'Distanza (m)' }, ticks: { maxTicksLimit: 20 } },
