@@ -3,13 +3,12 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>OTDR V8 - Fiber Trace 2 Compatible</title>
+    <title>OTDR V9 - Fix Fiber Trace 2</title>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <style>
         body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background-color: #eaeff2; padding: 20px; color: #333; }
         .container { max-width: 1400px; margin: 0 auto; display: grid; grid-template-columns: 380px 1fr; gap: 20px; height: 95vh; }
         
-        /* Pannello Sinistro */
         .panel { background: white; padding: 20px; border-radius: 8px; box-shadow: 0 4px 15px rgba(0,0,0,0.1); overflow-y: auto; display: flex; flex-direction: column; }
         h3 { border-bottom: 2px solid #007bff; padding-bottom: 10px; margin-top: 0; color: #0056b3; font-size: 1.1em; }
         
@@ -26,8 +25,10 @@
         
         .btn-remove { position: absolute; top: 8px; right: 8px; background: #dc3545; color: white; border: none; cursor: pointer; padding: 2px 6px; border-radius: 3px; font-size: 0.8em;}
         .btn-add { background: #28a745; color: white; margin-top: 15px; width: 100%; padding: 10px; border: none; border-radius: 4px; cursor: pointer; font-weight: 600; }
-        .btn-main { background: #007bff; color: white; margin-top: 10px; width: 100%; padding: 15px; border: none; border-radius: 4px; cursor: pointer; font-size: 1.2em; font-weight: bold; text-transform: uppercase; letter-spacing: 0.5px;}
-        .btn-main:hover { background: #0056b3; }
+        
+        /* Bottone DOWNLOAD Evidente */
+        .btn-main { background: #d35400; color: white; margin-top: 10px; width: 100%; padding: 15px; border: none; border-radius: 4px; cursor: pointer; font-size: 1.1em; font-weight: bold; text-transform: uppercase;}
+        .btn-main:hover { background: #a04000; }
 
         .chart-container { background: white; padding: 20px; border-radius: 8px; box-shadow: 0 4px 15px rgba(0,0,0,0.1); position: relative; display: flex; flex-direction: column; }
     </style>
@@ -84,8 +85,8 @@
         <div id="eventsContainer" class="event-list"></div>
 
         <div style="margin-top: auto;">
-            <button class="btn-main" onclick="downloadTXT()">💾 Scarica Dati (.TXT)</button>
-            <div style="text-align: center; margin-top:5px; font-size:0.8em; color:#666;">Per Fiber Trace 2</div>
+            <button class="btn-main" onclick="downloadTXT()">💾 Scarica Dati PULITI</button>
+            <div style="text-align: center; margin-top:5px; font-size:0.8em; color:#666;">Formato: XY Data (Tab separated)</div>
         </div>
     </div>
 
@@ -155,7 +156,6 @@
         let dataPoints = [];
         let labels = [];
         
-        // Lancio
         dataPoints.push(floorLevel); labels.push(0); 
         dataPoints.push(startPower + 10); labels.push(1); 
 
@@ -226,29 +226,28 @@
         }
     }
 
-    // NUOVA FUNZIONE DOWNLOAD ROBUSTA PER FIBER TRACE
+    // MODIFICA CRITICA PER FIBER TRACE 2
     function downloadTXT() {
         try {
             const trace = calculateTraceData();
             
-            // Header semplice per Fiber Trace
-            let txtContent = "Distance(km),Power(dB)\r\n"; 
+            // NESSUNA INTESTAZIONE - SOLO DATI PURI
+            let txtContent = ""; 
             
             for (let i = 0; i < trace.labels.length; i++) {
-                // Fiber Trace vuole i Km, e usa il punto come decimale
+                // Fiber Trace 2 preferisce i KM e il PUNTO decimale
                 let distKm = (trace.labels[i] / 1000).toFixed(6);
                 let power = trace.dataPoints[i].toFixed(4);
-                txtContent += `${distKm},${power}\r\n`;
+                
+                // Usiamo il TAB (\t) invece della virgola per sicurezza massima
+                txtContent += `${distKm}\t${power}\r\n`;
             }
 
-            // Creazione Blob
             const blob = new Blob([txtContent], { type: 'text/plain' });
-            
-            // Metodo compatibile per forzare download
             const link = document.createElement("a");
             
-            // Nome file .txt per facilitare Fiber Trace
-            link.download = "traccia_otdr_fiber_trace.txt"; 
+            // Salviamo come .TXT per facilitare il riconoscimento
+            link.download = "dati_otdr_clean.txt"; 
             
             if (window.webkitURL != null) {
                 link.href = window.webkitURL.createObjectURL(blob);
@@ -260,7 +259,6 @@
             
             link.click();
             
-            // Pulizia
             setTimeout(function() {
                 document.body.removeChild(link);
                 window.URL.revokeObjectURL(link.href);
