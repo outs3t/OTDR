@@ -2,112 +2,241 @@
 <html lang="it">
 <head>
     <meta charset="UTF-8">
-    <title>Generatore Dati Ponte per OTDR</title>
-    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <title>Convertitore TXT to SOR (Struttura Completa)</title>
     <style>
-        body { font-family: sans-serif; padding: 20px; background: #f4f4f9; }
-        .box { max-width: 800px; margin: 0 auto; background: white; padding: 20px; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
-        h1 { color: #2c3e50; text-align: center; }
-        .controls { display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin-bottom: 20px; }
-        input, select, button { width: 100%; padding: 10px; margin-top: 5px; box-sizing: border-box; }
-        .btn-exp { background: #27ae60; color: white; font-weight: bold; border: none; cursor: pointer; font-size: 1.2em; grid-column: span 2; }
-        .btn-add { background: #3498db; color: white; border: none; cursor: pointer; }
+        body { font-family: 'Segoe UI', sans-serif; padding: 20px; background: #f8f9fa; color: #333; }
+        .box { max-width: 800px; margin: 0 auto; background: white; padding: 30px; border-radius: 12px; box-shadow: 0 4px 20px rgba(0,0,0,0.1); }
+        h1 { color: #d35400; text-align: center; border-bottom: 2px solid #eee; padding-bottom: 15px; }
+        .upload-area { border: 2px dashed #bdc3c7; padding: 40px; text-align: center; margin: 20px 0; border-radius: 8px; background: #fcfcfc; }
+        .upload-area.highlight { border-color: #3498db; background: #ebf5fb; }
+        button { width: 100%; padding: 15px; background: #27ae60; color: white; font-weight: bold; border: none; border-radius: 6px; cursor: pointer; font-size: 1.1em; margin-top: 10px; }
+        button:disabled { background: #95a5a6; cursor: not-allowed; }
+        #status { margin-top: 15px; font-weight: bold; text-align: center; }
+        .note { font-size: 0.9em; color: #7f8c8d; margin-top: 20px; background: #ecf0f1; padding: 10px; border-radius: 4px; }
     </style>
 </head>
 <body>
+
 <div class="box">
-    <h1>1. Crea la tua Traccia</h1>
-    <div class="controls">
-        <div>
-            <label>Lunghezza (km)</label>
-            <input type="number" id="len" value="2" step="0.1">
-        </div>
-        <div>
-            <label>Attenuazione (dB/km)</label>
-            <input type="number" id="att" value="0.25" step="0.01">
-        </div>
-    </div>
-    
-    <div style="background:#eee; padding:15px; border-radius:5px; margin-bottom:15px;">
-        <label>Aggiungi Evento:</label>
-        <select id="type">
-            <option value="point">📍 Evento Puntuale (Giunto/Connettore)</option>
-            <option value="interval">↔️ Intervallo (Stress/Curva)</option>
-        </select>
-        <input type="number" id="pos" placeholder="Distanza (metri)">
-        <input type="number" id="end" placeholder="Fine (metri) - solo per intervallo" style="display:none">
-        <input type="number" id="loss" placeholder="Perdita (dB)">
-        <button class="btn-add" onclick="addEvt()">Aggiungi Evento</button>
-        <div id="list" style="margin-top:10px; font-size:0.9em;"></div>
+    <h1>Convertitore TXT -> SOR (V10)</h1>
+    <p style="text-align:center">Include blocco <b>KeyEvents</b> per compatibilità Fiber Trace.</p>
+
+    <div class="upload-area" id="dropArea">
+        <h3>1. Seleziona il file TXT</h3>
+        <input type="file" id="fileInput" accept=".txt,.csv">
+        <p style="font-size:0.8em; color:#999">Formato atteso: Distanza(km) [TAB] dB</p>
     </div>
 
-    <canvas id="chart" height="200"></canvas>
-    
-    <br>
-    <button class="btn-exp" onclick="exportTXT()">SCARICA FILE TXT (PONTE)</button>
-    <p style="text-align:center; font-size:0.8em; color:#666;">
-        Scarica questo file, poi segui le istruzioni "Passo 2" per convertirlo in SOR.
-    </p>
+    <div id="status">In attesa...</div>
+
+    <button id="btnConvert" onclick="convertFile()" disabled>2. CONVERTI IN .SOR</button>
+
+    <div class="note">
+        <strong>Come funziona:</strong> Questo script legge i numeri dal tuo TXT e li impacchetta in un file SOR che imita la struttura del tuo file Anritsu originale (GenParams + SupParams + FxdParams + <strong>KeyEvents</strong> + DataPts).
+    </div>
 </div>
 
 <script>
-    let events = [];
-    const ctx = document.getElementById('chart').getContext('2d');
-    let chart = new Chart(ctx, {
-        type: 'line',
-        data: { datasets: [{ borderColor: 'blue', borderWidth: 1.5, pointRadius:0, data: [] }] },
-        options: { animation: false, scales: { x: {type:'linear'}, y: {reverse:true} } }
+    let rawData = [];
+    const fileInput = document.getElementById('fileInput');
+    const btnConvert = document.getElementById('btnConvert');
+    const status = document.getElementById('status');
+
+    fileInput.addEventListener('change', function(e) {
+        const file = e.target.files[0];
+        if (!file) return;
+
+        const reader = new FileReader();
+        reader.onload = function(e) {
+            parseTXT(e.target.result);
+        };
+        reader.readAsText(file);
     });
 
-    document.getElementById('type').addEventListener('change', function() {
-        document.getElementById('end').style.display = this.value==='interval'?'block':'none';
-    });
-
-    function addEvt() {
-        let t = document.getElementById('type').value;
-        let p = parseFloat(document.getElementById('pos').value);
-        let e = parseFloat(document.getElementById('end').value);
-        let l = parseFloat(document.getElementById('loss').value);
-        if(isNaN(p) || isNaN(l)) return;
-        events.push({t,p,e,l});
-        update();
-        document.getElementById('list').innerHTML += `<div>${t} @ ${p}m (-${l}dB)</div>`;
-    }
-
-    function getData() {
-        let L = parseFloat(document.getElementById('len').value) * 1000;
-        let A = parseFloat(document.getElementById('att').value) / 1000;
-        let d = [];
-        let db = 0;
-        // Risoluzione fissa 1 metro
-        for(let m=0; m<=L; m+=1) {
-            db += A;
-            for(let ev of events) {
-                if(ev.t==='point' && Math.floor(m)===Math.floor(ev.p)) db += ev.l;
-                else if(ev.t==='interval' && m>=ev.p && m<=ev.e) db += ev.l/(ev.e-ev.p);
+    function parseTXT(text) {
+        rawData = [];
+        const lines = text.split(/\r\n|\n/);
+        lines.forEach(line => {
+            // Cerca numeri separati da tab o virgola
+            const parts = line.trim().split(/[\t,]+/);
+            if (parts.length >= 2) {
+                const dist = parseFloat(parts[0]); // km
+                const loss = parseFloat(parts[1]); // dB
+                if (!isNaN(dist) && !isNaN(loss)) {
+                    rawData.push({dist: dist, loss: loss});
+                }
             }
-            d.push({x:m, y:db + (Math.random()*0.01)});
+        });
+
+        if (rawData.length > 10) {
+            status.innerHTML = `✅ Caricati ${rawData.length} punti. Pronto a convertire.`;
+            status.style.color = "green";
+            btnConvert.disabled = false;
+        } else {
+            status.innerHTML = "❌ Errore: Non trovo dati validi nel TXT.";
+            status.style.color = "red";
         }
-        return d;
     }
 
-    function update() { chart.data.datasets[0].data = getData(); chart.update(); }
-    
-    function exportTXT() {
-        let data = getData();
-        // FORMATO UNIVERSALE ASCII: Distanza(km) <TAB> dB
-        let txt = "";
-        data.forEach(p => {
-            txt += `${(p.x/1000).toFixed(5)}\t${p.y.toFixed(4)}\r\n`;
-        });
-        
-        let b = new Blob([txt], {type:'text/plain'});
-        let a = document.createElement('a');
-        a.href = URL.createObjectURL(b);
-        a.download = "Traccia_Ponte.txt";
-        a.click();
+    function convertFile() {
+        try {
+            const buffer = createSOR(rawData);
+            const blob = new Blob([buffer], {type: "application/octet-stream"});
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement("a");
+            a.href = url;
+            a.download = "Traccia_V10_Compatibile.sor";
+            a.click();
+            status.innerHTML = "🎉 File SOR scaricato!";
+        } catch (e) {
+            alert("Errore durante la conversione: " + e.message);
+        }
     }
-    update();
+
+    // --- CORE SOR GENERATOR V10 ---
+    function createSOR(data) {
+        const numPoints = data.length;
+        // Stima buffer size
+        const buf = new ArrayBuffer(50000 + numPoints * 2); 
+        const v = new DataView(buf);
+        let p = 0;
+
+        // Helpers scrittura
+        function wStr(s) { for(let i=0;i<s.length;i++) v.setUint8(p++, s.charCodeAt(i)); v.setUint8(p++, 0); }
+        function wU16(n) { v.setUint16(p, n, true); p+=2; }
+        function wU32(n) { v.setUint32(p, n, true); p+=4; }
+        function wI16(n) { v.setInt16(p, n, true); p+=2; }
+        function wI32(n) { v.setInt32(p, n, true); p+=4; }
+
+        // --- 1. MAP BLOCK ---
+        const mapStart = p;
+        wStr("Map");
+        wU16(200); // Version 2.0
+        const mapSizePos = p; wU32(0);
+        wU16(5); // NUMERO BLOCCHI: GenParams, SupParams, FxdParams, KeyEvents, DataPts
+
+        // Definiamo i placeholder per i blocchi
+        const blocks = ["GenParams", "SupParams", "FxdParams", "KeyEvents", "DataPts"];
+        const blockPtrs = [];
+
+        blocks.forEach(name => {
+            wStr(name);
+            wU16(200); // Version
+            const sizePos = p; wU32(0);
+            const offPos = p; wU32(0);
+            blockPtrs.push({sizePos, offPos});
+        });
+
+        // Update Map Size
+        v.setUint32(mapSizePos, p - mapStart, true);
+
+        // --- 2. GENPARAMS ---
+        let bIdx = 0;
+        v.setUint32(blockPtrs[bIdx].offPos, p, true); // Set offset
+        let bStart = p;
+        wStr("GenParams");
+        wStr("IT"); // Lang
+        wStr("Simulated"); // Cable ID
+        wStr("Fiber01"); // Fiber ID
+        wU16(1650); // WL
+        wU32(0); wU32(0); wU32(0); // Locs
+        wStr("OT"); // Build
+        wStr("Nicola"); // Operator
+        wStr("V10 Converter"); // Comment
+        wU16(100); // Pulse
+        wU32(data[numPoints-1].dist * 1000 * 100000); // Range (approx)
+        wU32(numPoints);
+        wI32(14680); // IOR
+        wI16(0); wU16(0); wU32(0); wI16(0); wU16(0); wU16(0); wU16(0); wU16(0); // Spares
+        v.setUint32(blockPtrs[bIdx].sizePos, p - bStart, true);
+
+        // --- 3. SUPPARAMS ---
+        bIdx++;
+        v.setUint32(blockPtrs[bIdx].offPos, p, true);
+        bStart = p;
+        wStr("SupParams");
+        wStr("Anritsu"); // Fake Supplier to satisfy Viewer
+        wStr("MT9085"); // Fake Mainframe
+        wStr("1234"); 
+        wStr("Mod01");
+        wStr("5678");
+        wStr("1.13"); // Soft Rev
+        wStr("Other");
+        v.setUint32(blockPtrs[bIdx].sizePos, p - bStart, true);
+
+        // --- 4. FXDPARAMS ---
+        bIdx++;
+        v.setUint32(blockPtrs[bIdx].offPos, p, true);
+        bStart = p;
+        wStr("FxdParams");
+        wU32(Date.now()/1000);
+        wStr("km");
+        wStr("1650");
+        wI32(0);
+        wI32(numPoints);
+        wU16(numPoints); // Pulse used
+        // Spacing calculation (cm * 10000)
+        let totalDistKm = data[numPoints-1].dist;
+        let spacing = (totalDistKm * 100000 * 10000) / numPoints;
+        wU32(parseInt(spacing));
+        wU32(numPoints);
+        wI32(14680);
+        wU16(0); wU32(0);
+        v.setUint32(blockPtrs[bIdx].sizePos, p - bStart, true);
+
+        // --- 5. KEYEVENTS (IL PEZZO MANCANTE!) ---
+        bIdx++;
+        v.setUint32(blockPtrs[bIdx].offPos, p, true);
+        bStart = p;
+        wStr("KeyEvents");
+        wI16(0); // Num Events = 0 (Così non rompe le scatole se non sono formattati bene)
+        // Se volessimo aggiungerli, andrebbero qui. Per ora lasciamo vuoto ma presente.
+        v.setUint32(blockPtrs[bIdx].sizePos, p - bStart, true);
+
+        // --- 6. DATAPTS ---
+        bIdx++;
+        v.setUint32(blockPtrs[bIdx].offPos, p, true);
+        bStart = p;
+        wStr("DataPts");
+        wU32(numPoints);
+        wU16(1); // Num Traces
+        wU32(numPoints);
+        wU16(1000); // Scale factor
+        
+        // Data Writing
+        for(let i=0; i<numPoints; i++) {
+            // Conversione dB a formato SOR unsigned short
+            // SOR value = (BaseLevel - Attenuation) * 1000
+            // Usiamo 50dB come base (livello di iniezione alto)
+            let val = (50 - data[i].loss) * 1000;
+            if(val < 0) val = 0;
+            if(val > 65535) val = 65535;
+            wU16(parseInt(val));
+        }
+        v.setUint32(blockPtrs[bIdx].sizePos, p - bStart, true);
+
+        // --- 7. CKSUM ---
+        const ckStart = p;
+        wStr("Cksum");
+        const ckValPos = p;
+        wU16(0); // Placeholder
+
+        // Calcolo CRC-16 CCITT (Standard SOR)
+        // Deve includere TUTTO fino al checksum value escluso
+        let crc = 0;
+        const bytes = new Uint8Array(buf, 0, ckValPos);
+        
+        for (let i = 0; i < bytes.length; i++) {
+            let x = ((crc >> 8) ^ bytes[i]) & 0xFF;
+            x ^= x >> 4;
+            crc = ((crc << 8) ^ (x << 12) ^ (x << 5) ^ x) & 0xFFFF;
+        }
+        
+        v.setUint16(ckValPos, crc, true); // Scrivi CRC corretto
+        p += 2;
+
+        return new Uint8Array(buf, 0, p);
+    }
 </script>
 </body>
 </html>
