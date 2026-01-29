@@ -2,241 +2,309 @@
 <html lang="it">
 <head>
     <meta charset="UTF-8">
-    <title>Convertitore TXT to SOR (Struttura Completa)</title>
+    <title>OTDR Generator V11 - Precision Offsets</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <style>
-        body { font-family: 'Segoe UI', sans-serif; padding: 20px; background: #f8f9fa; color: #333; }
-        .box { max-width: 800px; margin: 0 auto; background: white; padding: 30px; border-radius: 12px; box-shadow: 0 4px 20px rgba(0,0,0,0.1); }
-        h1 { color: #d35400; text-align: center; border-bottom: 2px solid #eee; padding-bottom: 15px; }
-        .upload-area { border: 2px dashed #bdc3c7; padding: 40px; text-align: center; margin: 20px 0; border-radius: 8px; background: #fcfcfc; }
-        .upload-area.highlight { border-color: #3498db; background: #ebf5fb; }
-        button { width: 100%; padding: 15px; background: #27ae60; color: white; font-weight: bold; border: none; border-radius: 6px; cursor: pointer; font-size: 1.1em; margin-top: 10px; }
-        button:disabled { background: #95a5a6; cursor: not-allowed; }
-        #status { margin-top: 15px; font-weight: bold; text-align: center; }
-        .note { font-size: 0.9em; color: #7f8c8d; margin-top: 20px; background: #ecf0f1; padding: 10px; border-radius: 4px; }
+        body { font-family: sans-serif; background: #e0e0e0; padding: 20px; }
+        .main { max-width: 900px; margin: 0 auto; background: white; padding: 30px; border-radius: 15px; box-shadow: 0 10px 25px rgba(0,0,0,0.1); }
+        h1 { color: #2c3e50; border-bottom: 3px solid #3498db; padding-bottom: 10px; }
+        .controls { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-bottom: 20px; }
+        input, select, button { width: 100%; padding: 12px; margin-top: 5px; border-radius: 6px; border: 1px solid #ccc; box-sizing: border-box; }
+        button { font-weight: bold; cursor: pointer; transition: 0.2s; }
+        .btn-add { background: #3498db; color: white; border: none; }
+        .btn-gen { background: #e74c3c; color: white; border: none; font-size: 1.1em; grid-column: span 2; margin-top: 20px; padding: 15px; }
+        .btn-gen:hover { background: #c0392b; }
+        #log { font-family: monospace; font-size: 0.8em; color: #555; background: #f9f9f9; padding: 10px; margin-top: 10px; border: 1px solid #ddd; max-height: 100px; overflow-y: auto; }
     </style>
 </head>
 <body>
 
-<div class="box">
-    <h1>Convertitore TXT -> SOR (V10)</h1>
-    <p style="text-align:center">Include blocco <b>KeyEvents</b> per compatibilità Fiber Trace.</p>
-
-    <div class="upload-area" id="dropArea">
-        <h3>1. Seleziona il file TXT</h3>
-        <input type="file" id="fileInput" accept=".txt,.csv">
-        <p style="font-size:0.8em; color:#999">Formato atteso: Distanza(km) [TAB] dB</p>
+<div class="main">
+    <h1>OTDR Precision Generator V11</h1>
+    <p>Calcolo esatto dei puntatori di memoria per evitare "File Format Error".</p>
+    
+    <div class="controls">
+        <div>
+            <label>Lunghezza Fibra (m)</label>
+            <input type="number" id="len" value="2000">
+        </div>
+        <div>
+            <label>Attenuazione (dB/km)</label>
+            <input type="number" id="att" value="0.25">
+        </div>
     </div>
 
-    <div id="status">In attesa...</div>
-
-    <button id="btnConvert" onclick="convertFile()" disabled>2. CONVERTI IN .SOR</button>
-
-    <div class="note">
-        <strong>Come funziona:</strong> Questo script legge i numeri dal tuo TXT e li impacchetta in un file SOR che imita la struttura del tuo file Anritsu originale (GenParams + SupParams + FxdParams + <strong>KeyEvents</strong> + DataPts).
+    <div style="background:#f0f8ff; padding:15px; border-radius:8px;">
+        <label>Aggiungi Evento</label>
+        <div style="display:flex; gap:10px;">
+            <select id="type"><option value="point">Picco/Giunto</option><option value="interval">Intervallo</option></select>
+            <input type="number" id="dist" placeholder="Metri">
+            <input type="number" id="loss" placeholder="dB">
+        </div>
+        <button class="btn-add" onclick="addEvent()">➕ Aggiungi</button>
+        <div id="evtList" style="margin-top:5px; font-size:0.9em;"></div>
     </div>
+
+    <div style="height:300px; margin-top:20px;">
+        <canvas id="chart"></canvas>
+    </div>
+
+    <button class="btn-gen" onclick="generatePrecisionSOR()">SCARICA SOR (VERSIONE V11 - PRECISION)</button>
+    <div id="log">Status: Pronto.</div>
 </div>
 
 <script>
-    let rawData = [];
-    const fileInput = document.getElementById('fileInput');
-    const btnConvert = document.getElementById('btnConvert');
-    const status = document.getElementById('status');
-
-    fileInput.addEventListener('change', function(e) {
-        const file = e.target.files[0];
-        if (!file) return;
-
-        const reader = new FileReader();
-        reader.onload = function(e) {
-            parseTXT(e.target.result);
-        };
-        reader.readAsText(file);
+    let events = [];
+    const ctx = document.getElementById('chart').getContext('2d');
+    let chart = new Chart(ctx, {
+        type: 'line',
+        data: { datasets: [{ borderColor: '#2980b9', borderWidth: 2, pointRadius: 0, data: [] }] },
+        options: { maintainAspectRatio: false, animation: false, scales: { x: {type:'linear'}, y: {reverse:true} }, plugins:{legend:{display:false}} }
     });
 
-    function parseTXT(text) {
-        rawData = [];
-        const lines = text.split(/\r\n|\n/);
-        lines.forEach(line => {
-            // Cerca numeri separati da tab o virgola
-            const parts = line.trim().split(/[\t,]+/);
-            if (parts.length >= 2) {
-                const dist = parseFloat(parts[0]); // km
-                const loss = parseFloat(parts[1]); // dB
-                if (!isNaN(dist) && !isNaN(loss)) {
-                    rawData.push({dist: dist, loss: loss});
-                }
+    function addEvent() {
+        const t = document.getElementById('type').value;
+        const d = parseFloat(document.getElementById('dist').value);
+        const l = parseFloat(document.getElementById('loss').value);
+        if(isNaN(d) || isNaN(l)) return;
+        events.push({t, d, l, id: Date.now()});
+        updateGraph();
+        document.getElementById('evtList').innerHTML = events.map(e => `<div>${e.t} @ ${e.d}m (-${e.l}dB)</div>`).join('');
+    }
+
+    function getData() {
+        const L = parseFloat(document.getElementById('len').value);
+        const A = parseFloat(document.getElementById('att').value) / 1000;
+        // Punti esatti: risoluzione fissa per evitare errori di calcolo header
+        // Usiamo esattamente 2000 punti o L punti se L < 2000
+        const numPoints = Math.max(2000, parseInt(L)); 
+        const step = L / numPoints;
+        
+        let data = [];
+        let db = 0;
+        
+        events.sort((a,b) => a.d - b.d);
+
+        for(let i=0; i<numPoints; i++) {
+            let m = i * step;
+            db += A * step;
+            for(let e of events) {
+                if(e.t === 'point' && m >= e.d && (m-step) < e.d) db += e.l;
             }
-        });
-
-        if (rawData.length > 10) {
-            status.innerHTML = `✅ Caricati ${rawData.length} punti. Pronto a convertire.`;
-            status.style.color = "green";
-            btnConvert.disabled = false;
-        } else {
-            status.innerHTML = "❌ Errore: Non trovo dati validi nel TXT.";
-            status.style.color = "red";
+            // Rumore minimo
+            data.push(db + (Math.random()-0.5)*0.01);
         }
+        return { data: data, step: step, numPoints: numPoints };
     }
 
-    function convertFile() {
-        try {
-            const buffer = createSOR(rawData);
-            const blob = new Blob([buffer], {type: "application/octet-stream"});
-            const url = URL.createObjectURL(blob);
-            const a = document.createElement("a");
-            a.href = url;
-            a.download = "Traccia_V10_Compatibile.sor";
-            a.click();
-            status.innerHTML = "🎉 File SOR scaricato!";
-        } catch (e) {
-            alert("Errore durante la conversione: " + e.message);
-        }
+    function updateGraph() {
+        const d = getData();
+        chart.data.datasets[0].data = d.data.map((y, i) => ({x: i * d.step, y: y}));
+        chart.update();
     }
 
-    // --- CORE SOR GENERATOR V10 ---
-    function createSOR(data) {
-        const numPoints = data.length;
-        // Stima buffer size
-        const buf = new ArrayBuffer(50000 + numPoints * 2); 
-        const v = new DataView(buf);
+    // --- V11 PRECISION ENGINE ---
+    function generatePrecisionSOR() {
+        const log = document.getElementById('log');
+        log.innerHTML = "Generazione in corso...";
+        
+        const sim = getData();
+        const pts = sim.data;
+        const numPts = sim.numPoints;
+        const rangeMeters = parseFloat(document.getElementById('len').value);
+        
+        // 1. PRE-CALCOLO DIMENSIONI BLOCCHI
+        // Dobbiamo sapere ESATTAMENTE quanto sarà grande ogni blocco per scrivere la Map.
+        
+        // Helper string length (+1 for null)
+        const S = (str) => str.length + 1;
+        
+        // GenParams Size
+        // Header(0) + Lang(3) + CableID(11) + FiberID(11) + WL(2) + LocA(4) + LocB(4) + CableCode(4) + Build(3) + Op(7) + Comm(16) + Pulse(2) + Range(4) + Npts(4) + IOR(4) + Spares(16)
+        // Definiamo stringhe fisse per controllare la dimensione
+        const strLang = "IT";
+        const strCable = "FIBER-001"; 
+        const strFiber = "CORE-01";
+        const strBuild = "OT";
+        const strOp = "NICOLA";
+        const strComm = "GENERATED-V11";
+        
+        // Calcolo size GenParams (senza contare il nome del blocco e l'header standard)
+        // I blocchi hanno un header standard: IDString(term) + Ver(2) + Size(4)
+        // I dati veri iniziano dopo.
+        const szGen = S(strLang) + S(strCable) + S(strFiber) + 2 + 4 + 4 + 4 + S(strBuild) + S(strOp) + S(strComm) + 2 + 4 + 4 + 4 + 16; 
+        
+        // SupParams Size
+        const strSup = "Anritsu";
+        const strMain = "MT9083";
+        const strSN = "123456";
+        const strMod = "M1";
+        const strModSN = "0000";
+        const strSoft = "1.0";
+        const strOther = "None";
+        const szSup = S(strSup) + S(strMain) + S(strSN) + S(strMod) + S(strModSN) + S(strSoft) + S(strOther);
+
+        // FxdParams Size
+        const strUnit = "mt";
+        const strWl = "1650";
+        // Time(4) + Unit(S) + Wl(S) + Off(4) + Npts(4) + PulseIdx(2) + Space(4) + Npts(4) + IOR(4) + BC(2) + Spares(4)
+        const szFxd = 4 + S(strUnit) + S(strWl) + 4 + 4 + 2 + 4 + 4 + 4 + 2 + 4;
+        
+        // KeyEvents Size (Vuoto)
+        const szKey = 2; // Num events (short) = 0
+        
+        // DataPts Size
+        // Npts(4) + Ntrc(2) + Npts(4) + Scale(2) + (Npts * 2 bytes)
+        const szDat = 4 + 2 + 4 + 2 + (numPts * 2);
+
+        // Map Block Size
+        // Ver(2) + Size(4) + NumBlk(2) + 5 * (Name(S) + Ver(2) + Size(4) + Off(4))
+        const szMapHeader = 2 + 4 + 2;
+        const szBlkEntry = (name) => S(name) + 2 + 4 + 4;
+        const szMapTotal = szMapHeader + szBlkEntry("GenParams") + szBlkEntry("SupParams") + szBlkEntry("FxdParams") + szBlkEntry("KeyEvents") + szBlkEntry("DataPts");
+
+        // --- CALCOLO OFFSET ASSOLUTI ---
         let p = 0;
+        
+        // Map inizia a 0? No, File header è "Map" string + Map Block.
+        // File: "Map\0" + [MapBlock]
+        // Quindi MapBlock inizia a byte 4.
+        const offMap = 4;
+        
+        // Calcoliamo dove finisce la Map e iniziano gli altri
+        const offGen = offMap + szMapTotal;
+        // Bisogna aggiungere header standard del blocco (Name + Ver + Size) AL offset?
+        // No, nel formato SOR, l'offset punta all'inizio della stringa identificativa del blocco.
+        // ES: offset punta alla 'G' di GenParams.
+        
+        // Calcolo lunghezze totali dei blocchi (Header + Body)
+        // Header Blocco: NameString + Ver(2) + Size(4). Size include SOLO il body.
+        const totalBlkSize = (name, bodySz) => S(name) + 2 + 4 + bodySz;
+        
+        const totGen = totalBlkSize("GenParams", szGen);
+        const totSup = totalBlkSize("SupParams", szSup);
+        const totFxd = totalBlkSize("FxdParams", szFxd);
+        const totKey = totalBlkSize("KeyEvents", szKey);
+        const totDat = totalBlkSize("DataPts", szDat);
+        
+        const offSup = offGen + totGen;
+        const offFxd = offSup + totSup;
+        const offKey = offFxd + totFxd;
+        const offDat = offKey + totKey;
+        const offCksum = offDat + totDat;
+        
+        // --- SCRITTURA BUFFER ---
+        const totalFileSize = offCksum + S("Cksum") + 2; // Cksum tag + 2 bytes crc
+        const buf = new ArrayBuffer(totalFileSize);
+        const v = new DataView(buf);
+        p = 0;
 
-        // Helpers scrittura
-        function wStr(s) { for(let i=0;i<s.length;i++) v.setUint8(p++, s.charCodeAt(i)); v.setUint8(p++, 0); }
+        function wS(s) { for(let i=0;i<s.length;i++) v.setUint8(p++, s.charCodeAt(i)); v.setUint8(p++, 0); }
         function wU16(n) { v.setUint16(p, n, true); p+=2; }
         function wU32(n) { v.setUint32(p, n, true); p+=4; }
-        function wI16(n) { v.setInt16(p, n, true); p+=2; }
         function wI32(n) { v.setInt32(p, n, true); p+=4; }
 
-        // --- 1. MAP BLOCK ---
-        const mapStart = p;
-        wStr("Map");
-        wU16(200); // Version 2.0
-        const mapSizePos = p; wU32(0);
-        wU16(5); // NUMERO BLOCCHI: GenParams, SupParams, FxdParams, KeyEvents, DataPts
+        // 1. FILE HEADER
+        wS("Map");
 
-        // Definiamo i placeholder per i blocchi
-        const blocks = ["GenParams", "SupParams", "FxdParams", "KeyEvents", "DataPts"];
-        const blockPtrs = [];
+        // 2. MAP BLOCK CONTENT
+        const mapStartPos = p;
+        wU16(200); // Ver
+        wU32(szMapTotal); // Size
+        wU16(5); // Num Blocks
 
-        blocks.forEach(name => {
-            wStr(name);
-            wU16(200); // Version
-            const sizePos = p; wU32(0);
-            const offPos = p; wU32(0);
-            blockPtrs.push({sizePos, offPos});
-        });
-
-        // Update Map Size
-        v.setUint32(mapSizePos, p - mapStart, true);
-
-        // --- 2. GENPARAMS ---
-        let bIdx = 0;
-        v.setUint32(blockPtrs[bIdx].offPos, p, true); // Set offset
-        let bStart = p;
-        wStr("GenParams");
-        wStr("IT"); // Lang
-        wStr("Simulated"); // Cable ID
-        wStr("Fiber01"); // Fiber ID
-        wU16(1650); // WL
-        wU32(0); wU32(0); wU32(0); // Locs
-        wStr("OT"); // Build
-        wStr("Nicola"); // Operator
-        wStr("V10 Converter"); // Comment
-        wU16(100); // Pulse
-        wU32(data[numPoints-1].dist * 1000 * 100000); // Range (approx)
-        wU32(numPoints);
-        wI32(14680); // IOR
-        wI16(0); wU16(0); wU32(0); wI16(0); wU16(0); wU16(0); wU16(0); wU16(0); // Spares
-        v.setUint32(blockPtrs[bIdx].sizePos, p - bStart, true);
-
-        // --- 3. SUPPARAMS ---
-        bIdx++;
-        v.setUint32(blockPtrs[bIdx].offPos, p, true);
-        bStart = p;
-        wStr("SupParams");
-        wStr("Anritsu"); // Fake Supplier to satisfy Viewer
-        wStr("MT9085"); // Fake Mainframe
-        wStr("1234"); 
-        wStr("Mod01");
-        wStr("5678");
-        wStr("1.13"); // Soft Rev
-        wStr("Other");
-        v.setUint32(blockPtrs[bIdx].sizePos, p - bStart, true);
-
-        // --- 4. FXDPARAMS ---
-        bIdx++;
-        v.setUint32(blockPtrs[bIdx].offPos, p, true);
-        bStart = p;
-        wStr("FxdParams");
-        wU32(Date.now()/1000);
-        wStr("km");
-        wStr("1650");
-        wI32(0);
-        wI32(numPoints);
-        wU16(numPoints); // Pulse used
-        // Spacing calculation (cm * 10000)
-        let totalDistKm = data[numPoints-1].dist;
-        let spacing = (totalDistKm * 100000 * 10000) / numPoints;
-        wU32(parseInt(spacing));
-        wU32(numPoints);
-        wI32(14680);
-        wU16(0); wU32(0);
-        v.setUint32(blockPtrs[bIdx].sizePos, p - bStart, true);
-
-        // --- 5. KEYEVENTS (IL PEZZO MANCANTE!) ---
-        bIdx++;
-        v.setUint32(blockPtrs[bIdx].offPos, p, true);
-        bStart = p;
-        wStr("KeyEvents");
-        wI16(0); // Num Events = 0 (Così non rompe le scatole se non sono formattati bene)
-        // Se volessimo aggiungerli, andrebbero qui. Per ora lasciamo vuoto ma presente.
-        v.setUint32(blockPtrs[bIdx].sizePos, p - bStart, true);
-
-        // --- 6. DATAPTS ---
-        bIdx++;
-        v.setUint32(blockPtrs[bIdx].offPos, p, true);
-        bStart = p;
-        wStr("DataPts");
-        wU32(numPoints);
-        wU16(1); // Num Traces
-        wU32(numPoints);
-        wU16(1000); // Scale factor
+        // Scrittura puntatori mappa
+        const writeMapEntry = (name, size, offset) => {
+            wS(name);
+            wU16(200);
+            wU32(size);
+            wU32(offset);
+        };
         
-        // Data Writing
-        for(let i=0; i<numPoints; i++) {
-            // Conversione dB a formato SOR unsigned short
-            // SOR value = (BaseLevel - Attenuation) * 1000
-            // Usiamo 50dB come base (livello di iniezione alto)
-            let val = (50 - data[i].loss) * 1000;
+        writeMapEntry("GenParams", szGen, offGen);
+        writeMapEntry("SupParams", szSup, offSup);
+        writeMapEntry("FxdParams", szFxd, offFxd);
+        writeMapEntry("KeyEvents", szKey, offKey);
+        writeMapEntry("DataPts", szDat, offDat);
+        
+        // CHECK OFFSET
+        if (p !== offGen) {
+            console.error(`Offset Mismatch! Current: ${p}, Expected: ${offGen}`);
+            log.innerHTML = "Errore interno calcolo offset.";
+            return;
+        }
+
+        // 3. GENPARAMS
+        wS("GenParams"); wU16(200); wU32(szGen);
+        wS(strLang); wS(strCable); wS(strFiber); wU16(1650);
+        wU32(0); wU32(0); wU32(0);
+        wS(strBuild); wS(strOp); wS(strComm);
+        wU16(100); wU32(rangeMeters*100000); wU32(numPts); wI32(14680);
+        for(let k=0; k<8; k++) wU16(0); // Spares (16 bytes = 8 short)
+
+        // 4. SUPPARAMS
+        if(p !== offSup) console.error("Sup Offset Err");
+        wS("SupParams"); wU16(200); wU32(szSup);
+        wS(strSup); wS(strMain); wS(strSN); wS(strMod); wS(strModSN); wS(strSoft); wS(strOther);
+
+        // 5. FXDPARAMS
+        if(p !== offFxd) console.error("Fxd Offset Err");
+        wS("FxdParams"); wU16(200); wU32(szFxd);
+        wU32(Math.floor(Date.now()/1000));
+        wS(strUnit); wS(strWl);
+        wI32(0); wI32(numPts); wU16(numPts);
+        // Spacing: (RangeMeters * 100 * 10000) / NumPts
+        let spacing = (rangeMeters * 1000000) / numPts;
+        wU32(parseInt(spacing));
+        wU32(numPts); wI32(14680); wU16(0); wU32(0);
+
+        // 6. KEYEVENTS
+        if(p !== offKey) console.error("Key Offset Err");
+        wS("KeyEvents"); wU16(200); wU32(szKey);
+        wU16(0); // 0 Events
+
+        // 7. DATAPTS
+        if(p !== offDat) console.error("Dat Offset Err");
+        wS("DataPts"); wU16(200); wU32(szDat);
+        wU32(numPts); wU16(1); wU32(numPts); wU16(1000); // Scaling factor
+        
+        // Data
+        for(let i=0; i<numPts; i++) {
+            // Conversione 2.0: unsigned short relativa al noise floor/injection
+            // Assumiamo max level = 40dB. Valore = (40 - loss) * 1000
+            let val = (40 - pts[i]) * 1000;
             if(val < 0) val = 0;
             if(val > 65535) val = 65535;
             wU16(parseInt(val));
         }
-        v.setUint32(blockPtrs[bIdx].sizePos, p - bStart, true);
 
-        // --- 7. CKSUM ---
-        const ckStart = p;
-        wStr("Cksum");
-        const ckValPos = p;
+        // 8. CKSUM
+        if(p !== offCksum) console.error("Cksum Offset Err");
+        wS("Cksum");
+        let crcPos = p;
         wU16(0); // Placeholder
 
-        // Calcolo CRC-16 CCITT (Standard SOR)
-        // Deve includere TUTTO fino al checksum value escluso
+        // Calcolo CRC
+        let bytes = new Uint8Array(buf, 0, crcPos);
         let crc = 0;
-        const bytes = new Uint8Array(buf, 0, ckValPos);
-        
         for (let i = 0; i < bytes.length; i++) {
             let x = ((crc >> 8) ^ bytes[i]) & 0xFF;
             x ^= x >> 4;
             crc = ((crc << 8) ^ (x << 12) ^ (x << 5) ^ x) & 0xFFFF;
         }
-        
-        v.setUint16(ckValPos, crc, true); // Scrivi CRC corretto
-        p += 2;
+        v.setUint16(crcPos, crc, true);
 
-        return new Uint8Array(buf, 0, p);
+        // DONE
+        log.innerHTML = "Generato! Scarica e prova.";
+        
+        const blob = new Blob([buf], {type: "application/octet-stream"});
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = "PrecisionTrace_V11.sor";
+        a.click();
     }
 </script>
+
 </body>
 </html>
