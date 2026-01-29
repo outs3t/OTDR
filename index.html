@@ -265,4 +265,112 @@
         wStr("SupParams");
         wStr("GeminiSimulator"); // Supplier
         wStr("V7.0"); // Mainframe
-        wStr("12345
+        wStr("12345"); // SN
+        wStr("ModA"); // Module
+        wStr("56789"); // Mod SN
+        wStr("1.0"); // Soft Rev
+        wStr("NoOther"); 
+        view.setUint32(blkDefs[1].sizePos, p - blkDefs[1].start, true);
+
+        // 4. FXDPARAMS
+        blkDefs[2].start = p;
+        view.setUint32(blkDefs[2].offPos, p, true);
+        wStr("FxdParams");
+        wU32(Date.now() / 1000); // Time stamp
+        wStr("km"); // Units
+        wStr("1650"); // Wavelength act
+        wI32(0); // Acquisition offset
+        wI32(numPoints); // Num points again
+        wU16(numPoints); // Pulse width used index
+        wU32(10000); // Sample spacing (cm * 10000) -> Qui trucco: risoluzione
+        
+        // Calcolo spaziatura esatta
+        const spacingMeters = totalDist / numPoints;
+        const spacingCm = spacingMeters * 100;
+        const spacingInt = spacingCm * 10000; 
+        
+        // Riscrivo spacing
+        p -= 4; 
+        wU32(parseInt(spacingInt)); 
+        
+        wU32(numPoints); 
+        wI32(14680); // IOR
+        wU16(0); // BC
+        wU32(0); 
+        view.setUint32(blkDefs[2].sizePos, p - blkDefs[2].start, true);
+
+        // 5. DATAPTS (Main Data)
+        blkDefs[3].start = p;
+        view.setUint32(blkDefs[3].offPos, p, true);
+        wStr("DataPts");
+        wU32(numPoints); 
+        wU16(1); // Num traces
+        wU32(numPoints); // Num points
+        wU16(1000); // Scale factor (standard is values are multiplied by 1000)
+        
+        // Scriviamo i punti
+        // Nel formato SOR standard Telcordia, i dati sono unsigned short (2 byte)
+        // moltiplicati per il fattore di scala.
+        // dB = value / 1000
+        
+        // Attenzione: In OTDR, i valori alti sono "riflessioni", valori bassi attenuazione.
+        // Ma di solito si memorizzano valori relativi al livello di rumore o assoluti.
+        // Usiamo un offset alto (es. 50dB) e sottraiamo la perdita.
+        
+        const maxDB = 50.0; // Punto di partenza fittizio
+        
+        for(let i=0; i<numPoints; i++) {
+            let valDB = maxDB - dataPoints[i].y; 
+            if(valDB < 0) valDB = 0;
+            let valInt = parseInt(valDB * 1000);
+            wU16(valInt);
+        }
+        
+        view.setUint32(blkDefs[3].sizePos, p - blkDefs[3].start, true);
+
+        // 6. CHECKSUM BLOCK (Critico per Viewer)
+        const cksumStart = p;
+        wStr("Cksum");
+        const cksumValPos = p; 
+        wU16(0); // Placeholder
+        
+        // Calcolo CRC-16 (CCITT) su tutto il file finora
+        const content = new Uint8Array(buffer, 0, p);
+        let crc = 0; // Init CRC
+        
+        // Standard CRC-16 implementation used in Telcordia
+        // Polynomial 0x1021 usually, specific logic implies iterating bits
+        // Semplificazione: somma i byte e mascheramento (molti viewer accettano questo come fallback)
+        // Oppure implementazione reale CRC16-CCITT
+        
+        crc = calculateCRC16(content);
+        
+        // Scrivi CRC
+        view.setUint16(cksumValPos, crc, true);
+
+        // --- DOWNLOAD ---
+        const finalBuffer = new Uint8Array(buffer, 0, p);
+        const blob = new Blob([finalBuffer], {type: "application/octet-stream"});
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = "Simulazione_Nicola_V7.sor";
+        a.click();
+    }
+
+    // Algoritmo CRC16 standard per file SOR
+    function calculateCRC16(data) {
+        let crc = 0;
+        for (let i = 0; i < data.length; i++) {
+            let x = ((crc >> 8) ^ data[i]) & 0xFF;
+            x ^= x >> 4;
+            crc = ((crc << 8) ^ (x << 12) ^ (x << 5) ^ x) & 0xFFFF;
+        }
+        return crc;
+    }
+
+    update();
+</script>
+
+</body>
+</html>
