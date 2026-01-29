@@ -2,428 +2,183 @@
 <html lang="it">
 <head>
     <meta charset="UTF-8">
-    <title>OTDR Cloner V8 - Injection Method</title>
+    <title>OTDR V9 - Legacy 1.1 Engine</title>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <style>
-        body { font-family: sans-serif; background: #eef2f5; padding: 20px; }
-        .container { max-width: 1100px; margin: 0 auto; background: white; padding: 20px; border-radius: 8px; box-shadow: 0 4px 15px rgba(0,0,0,0.1); }
-        h1 { color: #d35400; border-bottom: 2px solid #eee; padding-bottom: 10px; }
-        
-        .step { background: #f8f9fa; padding: 15px; margin-bottom: 15px; border-left: 5px solid #d35400; }
-        .step h3 { margin-top: 0; }
-        
-        label { font-weight: bold; display: block; margin-top: 10px; }
-        input, select, button { width: 100%; padding: 10px; margin-top: 5px; box-sizing: border-box; }
-        
-        .btn-load { background: #34495e; color: white; font-weight: bold; border: none; cursor: pointer; }
-        .btn-add { background: #3498db; color: white; border: none; cursor: pointer; margin-top: 10px; }
-        .btn-save { background: #27ae60; color: white; font-size: 1.2em; font-weight: bold; border: none; cursor: pointer; margin-top: 20px; padding: 15px; }
-        
-        #fileInfo { margin-top: 10px; font-size: 0.9em; color: #2c3e50; font-family: monospace; white-space: pre-wrap; }
-        #eventList { border: 1px solid #ddd; padding: 5px; margin-top: 10px; max-height: 150px; overflow-y: auto; }
-        .evt-row { display: flex; justify-content: space-between; border-bottom: 1px solid #eee; padding: 5px; }
+        body { font-family: 'Segoe UI', sans-serif; background: #e9ecef; padding: 20px; }
+        .box { max-width: 900px; margin: 0 auto; background: white; padding: 25px; border-radius: 10px; box-shadow: 0 4px 15px rgba(0,0,0,0.1); }
+        h2 { color: #c0392b; border-bottom: 2px solid #eee; }
+        .grid { display: grid; grid-template-columns: 1fr 2fr; gap: 20px; }
+        input, select, button { width: 100%; padding: 10px; margin-top: 5px; margin-bottom: 10px; box-sizing: border-box; }
+        .btn-gen { background: #c0392b; color: white; font-weight: bold; border: none; cursor: pointer; font-size: 1.1em; }
+        .btn-add { background: #2980b9; color: white; border: none; cursor: pointer; }
     </style>
 </head>
 <body>
 
-<div class="container">
-    <h1>OTDR Cloner & Injector</h1>
-    <p>Usa il tuo file funzionante come "Guscio" per evitare errori di Heading.</p>
-
-    <div class="step">
-        <h3>1. Carica File "Donatore" (Il tuo file originale)</h3>
-        <input type="file" id="inputFile" accept=".sor" onchange="loadDonorFile()">
-        <div id="fileInfo">In attesa del file...</div>
-    </div>
-
-    <div class="step" id="simStep" style="opacity: 0.5; pointer-events: none;">
-        <h3>2. Modifica la Traccia</h3>
-        <div style="display: grid; grid-template-columns: 1fr 2fr; gap: 20px;">
-            <div>
-                <label>Attenuazione Fibra (dB/km)</label>
-                <input type="number" id="att" value="0.25" step="0.01" onchange="updatePreview()">
-                
-                <hr>
-                <label>Aggiungi Evento</label>
-                <select id="evtType">
-                    <option value="point">Evento Puntuale (Giunto)</option>
-                    <option value="interval">Intervallo</option>
-                </select>
-                
-                <input type="number" id="evtDist" placeholder="Distanza (metri)">
-                <input type="number" id="evtDistEnd" placeholder="Fine (metri) - solo per intervalli" style="display:none">
-                <input type="number" id="evtLoss" placeholder="Perdita (dB) es: 0.5">
-                
-                <button class="btn-add" onclick="addEvent()">Aggiungi Evento</button>
-                <div id="eventList"></div>
-            </div>
-            <div>
-                <canvas id="previewChart" height="250"></canvas>
-            </div>
+<div class="box">
+    <h2>Simulatore OTDR V9 (Legacy Mode)</h2>
+    <div class="grid">
+        <div>
+            <label>Lunghezza (metri)</label>
+            <input type="number" id="len" value="2000" onchange="update()">
+            <label>Perdita (dB/km)</label>
+            <input type="number" id="att" value="0.25" step="0.01" onchange="update()">
+            
+            <hr>
+            <label>Aggiungi Evento</label>
+            <select id="type">
+                <option value="point">📍 Picco</option>
+                <option value="interval">↔️ Intervallo</option>
+            </select>
+            <input type="number" id="dist" placeholder="Distanza (m)">
+            <input type="number" id="end" placeholder="Fine (m) per intervalli" style="display:none">
+            <input type="number" id="loss" placeholder="dB">
+            <button class="btn-add" onclick="addE()">Aggiungi</button>
+            <div id="list"></div>
+            
+            <hr>
+            <button class="btn-gen" onclick="generateLegacy()">SCARICA SOR LEGACY</button>
+        </div>
+        <div>
+            <canvas id="chart"></canvas>
         </div>
     </div>
-
-    <button class="btn-save" id="btnSave" onclick="saveModifiedSOR()" disabled>SCARICA SOR MODIFICATO</button>
 </div>
 
 <script>
-    let originalBuffer = null;
-    let dataPtsOffset = 0;
-    let numPoints = 0;
-    let scalingFactor = 1000; // Standard Telcordia scaling
-    let fileTotalDist = 0; // Metri totali letti dal file
     let events = [];
-    let chart;
-
-    // Setup Chart
-    const ctx = document.getElementById('previewChart').getContext('2d');
-    chart = new Chart(ctx, {
+    const ctx = document.getElementById('chart').getContext('2d');
+    let chart = new Chart(ctx, {
         type: 'line',
-        data: { datasets: [{ label: 'Nuova Traccia', borderColor: 'blue', borderWidth: 1, pointRadius: 0, data: [] }] },
-        options: { animation: false, scales: { x: {type:'linear'}, y: {reverse:true} } }
+        data: { datasets: [{ borderColor: 'red', borderWidth: 1, pointRadius: 0, data: [] }] },
+        options: { animation: false, scales: { x: {type:'linear'}, y: {reverse:true} }, plugins:{legend:{display:false}} }
     });
 
-    document.getElementById('evtType').addEventListener('change', function() {
-        document.getElementById('evtDistEnd').style.display = this.value === 'interval' ? 'block' : 'none';
+    document.getElementById('type').addEventListener('change', function() {
+        document.getElementById('end').style.display = this.value==='interval'?'block':'none';
     });
 
-    // 1. CARICAMENTO E ANALISI FILE
-    function loadDonorFile() {
-        const file = document.getElementById('inputFile').files[0];
-        if(!file) return;
-
-        const reader = new FileReader();
-        reader.onload = function(e) {
-            originalBuffer = e.target.result;
-            parseSOR(originalBuffer);
-        };
-        reader.readAsArrayBuffer(file);
+    function addE() {
+        let t = document.getElementById('type').value;
+        let l = parseFloat(document.getElementById('loss').value);
+        let d = parseFloat(document.getElementById('dist').value);
+        let e = parseFloat(document.getElementById('end').value);
+        events.push({t, d, e, l, id:Date.now()});
+        update();
     }
 
-    function parseSOR(buffer) {
-        const view = new DataView(buffer);
-        let info = "";
-        
-        // Cerca la stringa "DataPts" per trovare l'inizio dei dati
-        // Questo è un parser brutale ma efficace per non rompere l'header
-        const uint8 = new Uint8Array(buffer);
-        let foundPos = -1;
-        
-        // Cerchiamo la sequenza di byte per "DataPts" (68 97 116 97 80 116 115 0)
-        const tag = [68, 97, 116, 97, 80, 116, 115, 0];
-        
-        for(let i=0; i < uint8.length - 20; i++) {
-            let match = true;
-            for(let j=0; j<tag.length; j++) {
-                if(uint8[i+j] !== tag[j]) { match = false; break; }
-            }
-            if(match) {
-                foundPos = i;
-                break;
-            }
-        }
-
-        if(foundPos === -1) {
-            alert("Errore: Non trovo il blocco DataPts nel tuo file. Sei sicuro sia un .SOR valido?");
-            return;
-        }
-
-        // Analizziamo il blocco DataPts
-        // Offset relativi al blocco DataPts secondo standard SR-4731
-        // [Tag String] [Header...]
-        // DataPts Header structure:
-        // NumPoints (4 bytes) offset tag_len + 2
-        // NumTraces (2 bytes)
-        // NumPoints2 (4 bytes)
-        // ScaleFactor (2 bytes)
-        
-        let p = foundPos + tag.length; // Dopo la stringa "DataPts\0"
-        
-        // A volte c'è padding o struttura diversa. Cerchiamo di identificare i numeri logici.
-        // Nel blocco DataPts standard:
-        // bytes 0..3: size of block? No, dipende dalla versione.
-        
-        // Scorciatoia tattica:
-        // Solitamente dopo "DataPts\0" ci sono dei byte di controllo.
-        // I dati reali iniziano dopo l'header del blocco.
-        // Cerchiamo di leggere i parametri dai blocchi precedenti per essere sicuri.
-        // MA per il "Cloning", assumiamo di dover trovare solo dove iniziano i dati grezzi.
-        
-        // In molti file .SOR, i dati iniziano circa 20-30 byte dopo il tag DataPts.
-        // Ma dobbiamo trovare 'NumPoints'.
-        
-        // Proviamo a leggere FxdParams per trovare NumPoints e Distanza
-        const fxdPos = findTag(uint8, "FxdParams");
-        if(fxdPos === -1) { alert("Header non standard."); return; }
-        
-        // FxdParams contiene NumPoints all'offset variabile. 
-        // Facciamo prima: usiamo la lunghezza del file per stimare.
-        
-        // Strategia "Ignorante ma efficace":
-        // I dati sono alla fine, prima del Cksum.
-        // Il blocco DataPts è l'ultimo grande blocco.
-        
-        // Leggiamo Scale Factor e NumPoints dal DataPts block direttamente
-        // Offset tipici dopo la stringa "DataPts\0":
-        // +2 bytes (NumPoints Long?) -> No
-        
-        // Facciamo un tentativo euristico sui dati che hai incollato prima:
-        // Vedo "DataPts...". 
-        
-        // ATTENZIONE: Per modificare i dati senza rompere il file, dobbiamo mantenere 
-        // ESATTAMENTE lo stesso numero di punti del file originale.
-        
-        // Cerchiamo il Cksum alla fine per capire dove finiscono i dati.
-        const cksumPos = findTag(uint8, "Cksum");
-        
-        // Ipotizziamo che i dati siano tra (DataPts Header end) e (Cksum start).
-        // Ogni punto sono 2 byte (unsigned short).
-        
-        // Calcolo approssimativo header DataPts: ~20-30 byte.
-        const dataStartEstimate = foundPos + 20; // Offset iniziale tentativo
-        const dataEndEstimate = cksumPos;
-        const bytesData = dataEndEstimate - dataStartEstimate;
-        
-        // Se i punti sono a 2 byte, numPoints = bytesData / 2.
-        // Controlliamo se è un numero intero sensato.
-        let estimatedPoints = Math.floor(bytesData / 2);
-        
-        // Cerchiamo questo numero nell'header DataPts per confermare
-        // Cerchiamo i byte di 'estimatedPoints' vicino al tag DataPts
-        let confirmedPoints = 0;
-        let finalDataOffset = 0;
-        
-        // Scansiona header DataPts per trovare il numero di punti
-        for(let k=0; k<50; k++) {
-            let val = view.getUint32(foundPos + k, true); // Little endian
-            // Se troviamo un valore vicino alla stima (tolleranza +/- 100 byte di header)
-            if(val > 1000 && val < 100000) {
-                 // Check se (val * 2) + offset == cksumPos approssimativamente
-                 let endCalc = (foundPos + k) + (val * 2);
-                 if (Math.abs(endCalc - cksumPos) < 200) {
-                     confirmedPoints = val;
-                     // I dati iniziano solitamente dopo lo scale factor
-                     // Lo standard dice: offset punti = header + parametri
-                     // Assumiamo che i dati inizino a (cksumPos - confirmedPoints*2)
-                     finalDataOffset = cksumPos - (confirmedPoints * 2);
-                     break;
-                 }
-            }
-        }
-        
-        if(confirmedPoints === 0) {
-             // Fallback: usiamo la stima brutale
-             info += "Attenzione: Struttura complessa. Uso stima dimensioni.\n";
-             confirmedPoints = estimatedPoints; 
-             finalDataOffset = cksumPos - (confirmedPoints * 2);
-        }
-
-        numPoints = confirmedPoints;
-        dataPtsOffset = finalDataOffset;
-        
-        // Lettura Scale Factor (solitamente 1000)
-        // Lo assumiamo 1000 perché è standard Telcordia, a meno che non leggiamo diversamente.
-        
-        info += `File Caricato Correttamente!\n`;
-        info += `Punti Trovati: ${numPoints}\n`;
-        info += `Offset Dati: ${dataPtsOffset}\n`;
-        
-        // Tentiamo di capire la distanza totale leggendo l'ultimo valore originale
-        // O dai GenParams.
-        // Leggiamo i FxdParams per la risoluzione
-        // Ma per semplicità, chiediamo all'utente di confermare la lunghezza o la stimiamo
-        // Assumiamo risoluzione standard
-        
-        fileTotalDist = 0; // Resettiamo
-        // Leggiamo risoluzione dai parametri fissi se possibile, altrimenti default
-        // Invece di parsing complesso, usiamo un default di 0.5m o 1m per punto e lasciamo l'utente correggere
-        // Oppure leggiamo GenParams -> Range
-        
-        document.getElementById('fileInfo').innerText = info;
-        document.getElementById('simStep').style.opacity = "1";
-        document.getElementById('simStep').style.pointerEvents = "auto";
-        document.getElementById('btnSave').disabled = false;
-        
-        // Aggiorna anteprima con dati vuoti
-        updatePreview();
-    }
-
-    function findTag(arr, str) {
-        let tag = [];
-        for(let i=0; i<str.length; i++) tag.push(str.charCodeAt(i));
-        tag.push(0); // Null term
-        
-        for(let i=0; i < arr.length - tag.length; i++) {
-            let match = true;
-            for(let j=0; j<tag.length; j++) {
-                if(arr[i+j] !== tag[j]) { match = false; break; }
-            }
-            if(match) return i;
-        }
-        return -1;
-    }
-
-    // 2. SIMULAZIONE DATI
-    function addEvent() {
-        const type = document.getElementById('evtType').value;
-        const loss = parseFloat(document.getElementById('evtLoss').value);
-        let dist = parseFloat(document.getElementById('evtDist').value);
-        let end = parseFloat(document.getElementById('evtDistEnd').value);
-        
-        if(isNaN(loss) || isNaN(dist)) return;
-        
-        events.push({type, dist, end, loss, id: Date.now()});
-        renderEvents();
-        updatePreview();
-    }
-
-    function renderEvents() {
-        document.getElementById('eventList').innerHTML = events.map(e => 
-            `<div class="evt-row"><span>${e.type} @ ${e.dist}m -${e.loss}dB</span><b style="color:red;cursor:pointer" onclick="delEvt(${e.id})">X</b></div>`
-        ).join('');
-    }
-    window.delEvt = (id) => { events = events.filter(e=>e.id!==id); renderEvents(); updatePreview(); }
-
-    function generateTraceData() {
-        // Genera un array di valori dB lungo ESATTAMENTE quanto numPoints
-        // Dobbiamo mappare la distanza 'virtuale' sui punti fisici del file
-        
-        // Se non conosciamo la distanza reale del file, chiediamo all'utente di fare match
-        // Oppure ipotizziamo una risoluzione fissa.
-        // Nel file caricato c'era 1650nm. Ipotizziamo lunghezza standard.
-        // Usiamo un trucco: Visualizziamo la traccia su un range fittizio e spalmiamo i dati.
-        
-        // Ipotizziamo che il file originale copra X metri.
-        // Ma noi vogliamo simulare quello che dice l'utente.
-        // Tuttavia, per non rompere l'header, NON POSSIAMO cambiare il range totale nel file (è scritto nei FxdParams).
-        // QUINDI: La simulazione si adatterà alla lunghezza del file originale.
-        // (Se il file originale era 5km, la simulazione sarà su 5km).
-        
-        // Generiamo dati
-        let data = new Float32Array(numPoints);
+    function getData() {
+        let L = parseFloat(document.getElementById('len').value);
+        let A = parseFloat(document.getElementById('att').value)/1000;
+        let data = [];
         let db = 0;
-        let att = parseFloat(document.getElementById('att').value) / 1000; // dB/m
+        // Simuliamo 1000 punti fissi per compatibilità legacy
+        let step = L / 1000; 
         
-        // Risoluzione virtuale (metri per punto)
-        // Non la sappiamo esatta, ma assumiamo che l'utente sappia quanto era lungo il file originale
-        // Oppure mettiamo un valore fittizio, tanto è la forma che conta.
-        // Usiamo 1 metro per punto come base.
-        let metersPerPoint = 1.0; 
-        
-        events.sort((a,b) => a.dist - b.dist);
-        
-        for(let i=0; i<numPoints; i++) {
-            let m = i * metersPerPoint;
-            db += att * metersPerPoint;
-            
-            for(let e of events) {
-                if(e.type === 'point' && m >= e.dist && (m-metersPerPoint) < e.dist) {
-                    db += e.loss;
-                } else if(e.type === 'interval' && m >= e.start && m <= e.end) {
-                    let range = e.end - e.start;
-                    if(range > 0) db += (e.loss / range) * metersPerPoint;
-                }
+        events.sort((a,b)=>a.d-b.d);
+
+        for(let i=0; i<=1000; i++) {
+            let m = i * step;
+            db += A * step;
+            for(let ev of events) {
+                if(ev.t==='point' && m>=ev.d && (m-step)<ev.d) db+=ev.l;
+                else if(ev.t==='interval' && m>=ev.d && m<=ev.e) db+=(ev.l/(ev.e-ev.d))*step;
             }
-            
-            // Rumore
-            data[i] = db + (Math.random()-0.5)*0.02;
+            data.push({x: m, y: db + (Math.random()*0.02)});
         }
-        
         return data;
     }
 
-    function updatePreview() {
-        if(numPoints === 0) return;
-        const d = generateTraceData();
-        // Downsample per preview veloce
-        const viewData = [];
-        const step = Math.ceil(d.length / 500);
-        for(let i=0; i<d.length; i+=step) viewData.push({x: i, y: d[i]});
-        
-        chart.data.datasets[0].data = viewData;
+    function update() {
+        chart.data.datasets[0].data = getData();
         chart.update();
     }
+    update();
 
-    // 3. SALVATAGGIO E INIEZIONE
-    function saveModifiedSOR() {
-        if(!originalBuffer) return;
+    // --- GENERATORE LEGACY 1.1 (Semplificato) ---
+    function generateLegacy() {
+        let data = getData();
+        let numPts = data.length;
         
-        const simData = generateTraceData();
-        // Clona buffer
-        const newBuffer = originalBuffer.slice(0);
-        const view = new DataView(newBuffer);
-        const uint8 = new Uint8Array(newBuffer);
-        
-        // SOVRASCRIVIAMO I DATI
-        // I dati nello standard sono (ValoreDB * 1000) come unsigned short (2 bytes)
-        // Offset di base: 50dB o simile.
-        // Telcordia usa numeri relativi. Spesso 0xFFFF è saturazione.
-        // Dobbiamo scalare i nostri dB (0..10..) in valori unsigned short (65535..0..).
-        // Solitamente: ValoreSOR = (MaxLevel - Attenuazione) * 1000.
-        
-        const maxLevelDB = 50.0; // Livello iniezione fittizio alto
-        
-        for(let i=0; i<numPoints; i++) {
-            let val = simData[i];
-            let sorVal = (maxLevelDB - val) * 1000;
-            if(sorVal < 0) sorVal = 0;
-            if(sorVal > 65535) sorVal = 65535;
-            
-            // Scrivi all'offset corretto (2 byte per punto)
-            view.setUint16(dataPtsOffset + (i*2), parseInt(sorVal), true); // Little Endian
-        }
+        // Buffer
+        let buffer = new ArrayBuffer(50000);
+        let v = new DataView(buffer);
+        let p = 0;
 
-        // AGGIORNA CHECKSUM
-        // Troviamo il blocco Cksum alla fine
-        const cksumPos = findTag(uint8, "Cksum");
-        if(cksumPos !== -1) {
-            // Calcola CRC16 fino al valore del checksum
-            // La posizione del valore del checksum è cksumPos + stringa(6) + 2 bytes null = +8?
-            // "Cksum\0" = 6 bytes. Poi c'è il valore (2 bytes).
-            // Lo standard dice che il checksum copre tutto il file fino al checksum escluso.
-            
-            const contentToCheck = new Uint8Array(newBuffer, 0, cksumPos + 6); // Include "Cksum\0"
-            // Reset checksum value to 0 before calc? No, usually calc up to header.
-            
-            // Per sicurezza, ricalcoliamo il CRC sull'intero file eccetto gli ultimi 2 byte, 
-            // poi scriviamo il risultato negli ultimi 2 byte.
-            // Ma la posizione del valore Cksum varia.
-            
-            // Metodo empirico: Scrivi 0 nel valore Cksum, calcola CRC, scrivi CRC.
-            // Il valore Cksum è solitamente gli ultimi 2 byte del blocco Cksum.
-            // Assumiamo che il valore sia a cksumPos + 6.
-            
-            view.setUint16(cksumPos + 6, 0, true); // Azzera
-            
-            // Calcolo CRC su tutto il file fino a cksumPos+6
-            // In realtà lo standard Telcordia dice: "Sum of all bytes in file modulo 65535" oppure CRC-CCITT.
-            // Anritsu usa CRC-CCITT (0x1021).
-            
-            const dataToCrc = new Uint8Array(newBuffer, 0, cksumPos + 6);
-            const newCrc = calculateCRC16(dataToCrc);
-            
-            view.setUint16(cksumPos + 6, newCrc, true);
+        function wS(s) { for(let i=0;i<s.length;i++) v.setUint8(p++, s.charCodeAt(i)); v.setUint8(p++,0); }
+        function w16(n) { v.setInt16(p, n, true); p+=2; }
+        function w32(n) { v.setInt32(p, n, true); p+=4; }
+        function wU16(n) { v.setUint16(p, n, true); p+=2; }
+        function wU32(n) { v.setUint32(p, n, true); p+=4; }
+
+        // MAP (Version 1.1 = 101)
+        let mapStart = p;
+        wS("Map");
+        wU16(101); // Versione 1.1
+        let mapSizePos = p; wU32(0);
+        wU16(2); // Solo 2 blocchi essenziali: FxdParams, DataPts (Cksum e nascosto)
+
+        // Definiamo i blocchi
+        wS("FxdParams"); wU16(101); let fxdSize = p; wU32(0); let fxdOff = p; wU32(0);
+        wS("DataPts"); wU16(101); let datSize = p; wU32(0); let datOff = p; wU32(0);
+        
+        // Chiudiamo MAP
+        let mapEnd = p;
+        v.setUint32(mapSizePos, mapEnd-mapStart, true);
+
+        // FXDPARAMS
+        let fxdStart = p;
+        v.setUint32(fxdOff, p, true); // Update offset
+        wS("FxdParams");
+        wU32(Date.now()/1000);
+        wS("mt"); // Unit
+        wS("1650"); // Lambda
+        w32(0); // Offset
+        w32(numPts); // Num Pts
+        wU16(numPts);
+        wU32(parseInt((parseFloat(document.getElementById('len').value)/numPts)*10000)); // Spacing
+        w32(numPts);
+        w32(14650); // IOR
+        wU16(0); w32(0);
+        v.setUint32(fxdSize, p-fxdStart, true);
+
+        // DATAPTS
+        let datStart = p;
+        v.setUint32(datOff, p, true);
+        wS("DataPts");
+        wU32(numPts); wU16(1); w32(numPts); wU16(1000); // Scale factor
+        
+        // Scriviamo i punti
+        for(let i=0; i<numPts; i++) {
+            let val = (50 - data[i].y) * 1000; // Offset 50dB
+            if(val<0) val=0;
+            wU16(parseInt(val));
         }
+        v.setUint32(datSize, p-datStart, true);
+
+        // CKSUM (Legacy usa somma semplice a volte, ma proviamo CRC standard)
+        wS("Cksum");
+        let ckPos = p; wU16(0);
+        
+        // Calcolo CRC brutale
+        let crc = 0;
+        let bytes = new Uint8Array(buffer, 0, p);
+        for (let i=0; i<bytes.length; i++) {
+            let x = ((crc>>8)^bytes[i]) & 0xFF;
+            x ^= x>>4;
+            crc = ((crc<<8)^(x<<12)^(x<<5)^x) & 0xFFFF;
+        }
+        v.setUint16(ckPos, crc, true);
+        p+=2; // Fine file
 
         // Download
-        const blob = new Blob([newBuffer], {type: "application/octet-stream"});
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement("a");
-        a.href = url;
-        a.download = "Traccia_Modificata_OK.sor";
+        let b = new Blob([new Uint8Array(buffer, 0, p)], {type:'application/octet-stream'});
+        let a = document.createElement('a');
+        a.href = URL.createObjectURL(b);
+        a.download = "LegacyTrace_V1.sor";
         a.click();
     }
-
-    function calculateCRC16(data) {
-        let crc = 0;
-        for (let i = 0; i < data.length; i++) {
-            let x = ((crc >> 8) ^ data[i]) & 0xFF;
-            x ^= x >> 4;
-            crc = ((crc << 8) ^ (x << 12) ^ (x << 5) ^ x) & 0xFFFF;
-        }
-        return crc;
-    }
 </script>
-
 </body>
 </html>
