@@ -2,363 +2,418 @@
 <html lang="it">
 <head>
     <meta charset="UTF-8">
-    <title>OTDR Generator V7 - Binary Engine</title>
+    <title>OTDR Cloner V8 - Injection Method</title>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <style>
-        body { font-family: 'Segoe UI', Arial, sans-serif; background: #f0f2f5; padding: 20px; color: #333; }
-        .container { max-width: 1200px; margin: 0 auto; display: grid; grid-template-columns: 350px 1fr; gap: 20px; }
-        .panel { background: white; padding: 20px; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
-        h2 { color: #0056b3; border-bottom: 2px solid #eee; padding-bottom: 10px; margin-top: 0; }
-        label { display: block; font-weight: bold; margin-top: 10px; font-size: 0.9em; }
-        input, select { width: 100%; padding: 8px; margin-top: 5px; border: 1px solid #ccc; border-radius: 4px; box-sizing: border-box; }
-        .btn { width: 100%; padding: 12px; border: none; border-radius: 5px; margin-top: 10px; cursor: pointer; font-weight: bold; color: white; transition: 0.2s; }
-        .btn-add { background: #007bff; }
-        .btn-add:hover { background: #0056b3; }
-        .btn-gen { background: #28a745; font-size: 1.1em; margin-top: 20px; }
-        .btn-gen:hover { background: #218838; }
-        .zoom-bar { display: flex; gap: 5px; margin-top: 10px; justify-content: center; }
-        .btn-zoom { background: #6c757d; color: white; padding: 5px 15px; border: none; border-radius: 4px; cursor: pointer; }
-        #eventList { max-height: 200px; overflow-y: auto; margin-top: 10px; border: 1px solid #eee; }
-        .evt-row { padding: 8px; border-bottom: 1px solid #eee; display: flex; justify-content: space-between; font-size: 0.9em; }
-        .del { color: red; cursor: pointer; font-weight: bold; }
+        body { font-family: sans-serif; background: #eef2f5; padding: 20px; }
+        .container { max-width: 1100px; margin: 0 auto; background: white; padding: 20px; border-radius: 8px; box-shadow: 0 4px 15px rgba(0,0,0,0.1); }
+        h1 { color: #d35400; border-bottom: 2px solid #eee; padding-bottom: 10px; }
+        
+        .step { background: #f8f9fa; padding: 15px; margin-bottom: 15px; border-left: 5px solid #d35400; }
+        .step h3 { margin-top: 0; }
+        
+        label { font-weight: bold; display: block; margin-top: 10px; }
+        input, select, button { width: 100%; padding: 10px; margin-top: 5px; box-sizing: border-box; }
+        
+        .btn-load { background: #34495e; color: white; font-weight: bold; border: none; cursor: pointer; }
+        .btn-add { background: #3498db; color: white; border: none; cursor: pointer; margin-top: 10px; }
+        .btn-save { background: #27ae60; color: white; font-size: 1.2em; font-weight: bold; border: none; cursor: pointer; margin-top: 20px; padding: 15px; }
+        
+        #fileInfo { margin-top: 10px; font-size: 0.9em; color: #2c3e50; font-family: monospace; white-space: pre-wrap; }
+        #eventList { border: 1px solid #ddd; padding: 5px; margin-top: 10px; max-height: 150px; overflow-y: auto; }
+        .evt-row { display: flex; justify-content: space-between; border-bottom: 1px solid #eee; padding: 5px; }
     </style>
 </head>
 <body>
 
 <div class="container">
-    <div class="panel">
-        <h2>1. Parametri Fibra</h2>
-        <label>Lunghezza (metri)</label>
-        <input type="number" id="len" value="2000" onchange="update()">
-        <label>Attenuazione (dB/km)</label>
-        <input type="number" id="att" value="0.25" step="0.01" onchange="update()">
-        <label>Risoluzione (punti/metro)</label>
-        <select id="res">
-            <option value="1">1 punto ogni metro (Veloce)</option>
-            <option value="0.5">2 punti ogni metro (Alta Qualità)</option>
-        </select>
+    <h1>OTDR Cloner & Injector</h1>
+    <p>Usa il tuo file funzionante come "Guscio" per evitare errori di Heading.</p>
 
-        <h2>2. Eventi</h2>
-        <label>Tipo</label>
-        <select id="type" onchange="toggleInputs()">
-            <option value="point">📍 Picco/Giunto</option>
-            <option value="interval">↔️ Intervallo</option>
-        </select>
-        
-        <div id="pInput">
-            <label>Distanza (m)</label>
-            <input type="number" id="dist" placeholder="1000">
-        </div>
-        <div id="iInput" style="display:none">
-            <label>Inizio (m)</label>
-            <input type="number" id="start" placeholder="1000">
-            <label>Fine (m)</label>
-            <input type="number" id="end" placeholder="1020">
-        </div>
-        
-        <label>Perdita (dB)</label>
-        <input type="number" id="loss" placeholder="0.5" step="0.1">
-        
-        <button class="btn btn-add" onclick="addEvt()">Aggiungi Evento</button>
-        <div id="eventList"></div>
-
-        <button class="btn btn-gen" onclick="generateRealSOR()">GENERA SOR BINARIO<br><small>(Compatibile Viewer)</small></button>
+    <div class="step">
+        <h3>1. Carica File "Donatore" (Il tuo file originale)</h3>
+        <input type="file" id="inputFile" accept=".sor" onchange="loadDonorFile()">
+        <div id="fileInfo">In attesa del file...</div>
     </div>
 
-    <div class="panel">
-        <div style="height: 500px; position: relative;">
-            <canvas id="chart"></canvas>
+    <div class="step" id="simStep" style="opacity: 0.5; pointer-events: none;">
+        <h3>2. Modifica la Traccia</h3>
+        <div style="display: grid; grid-template-columns: 1fr 2fr; gap: 20px;">
+            <div>
+                <label>Attenuazione Fibra (dB/km)</label>
+                <input type="number" id="att" value="0.25" step="0.01" onchange="updatePreview()">
+                
+                <hr>
+                <label>Aggiungi Evento</label>
+                <select id="evtType">
+                    <option value="point">Evento Puntuale (Giunto)</option>
+                    <option value="interval">Intervallo</option>
+                </select>
+                
+                <input type="number" id="evtDist" placeholder="Distanza (metri)">
+                <input type="number" id="evtDistEnd" placeholder="Fine (metri) - solo per intervalli" style="display:none">
+                <input type="number" id="evtLoss" placeholder="Perdita (dB) es: 0.5">
+                
+                <button class="btn-add" onclick="addEvent()">Aggiungi Evento</button>
+                <div id="eventList"></div>
+            </div>
+            <div>
+                <canvas id="previewChart" height="250"></canvas>
+            </div>
         </div>
-        <div class="zoom-bar">
-            <button class="btn-zoom" onclick="zoom(0.8)">Zoom In (+)</button>
-            <button class="btn-zoom" onclick="resetZoom()">Reset</button>
-            <button class="btn-zoom" onclick="zoom(1.2)">Zoom Out (-)</button>
-        </div>
-        <input type="range" id="pan" style="width:100%" disabled oninput="pan(this.value)">
     </div>
+
+    <button class="btn-save" id="btnSave" onclick="saveModifiedSOR()" disabled>SCARICA SOR MODIFICATO</button>
 </div>
 
 <script>
-    // --- MOTORE GRAFICO ---
+    let originalBuffer = null;
+    let dataPtsOffset = 0;
+    let numPoints = 0;
+    let scalingFactor = 1000; // Standard Telcordia scaling
+    let fileTotalDist = 0; // Metri totali letti dal file
     let events = [];
     let chart;
-    const ctx = document.getElementById('chart').getContext('2d');
-    
+
+    // Setup Chart
+    const ctx = document.getElementById('previewChart').getContext('2d');
     chart = new Chart(ctx, {
         type: 'line',
-        data: { datasets: [{ label: 'Traccia dB', borderColor: '#0056b3', borderWidth: 1.5, pointRadius: 0, data: [] }] },
-        options: {
-            maintainAspectRatio: false, animation: false,
-            scales: { x: { type: 'linear', title: {display:true, text:'Metri'} }, y: { reverse: true, title: {display:true, text:'dB'} } }
-        }
+        data: { datasets: [{ label: 'Nuova Traccia', borderColor: 'blue', borderWidth: 1, pointRadius: 0, data: [] }] },
+        options: { animation: false, scales: { x: {type:'linear'}, y: {reverse:true} } }
     });
 
-    function toggleInputs() {
-        const t = document.getElementById('type').value;
-        document.getElementById('pInput').style.display = t === 'point' ? 'block' : 'none';
-        document.getElementById('iInput').style.display = t === 'interval' ? 'block' : 'none';
+    document.getElementById('evtType').addEventListener('change', function() {
+        document.getElementById('evtDistEnd').style.display = this.value === 'interval' ? 'block' : 'none';
+    });
+
+    // 1. CARICAMENTO E ANALISI FILE
+    function loadDonorFile() {
+        const file = document.getElementById('inputFile').files[0];
+        if(!file) return;
+
+        const reader = new FileReader();
+        reader.onload = function(e) {
+            originalBuffer = e.target.result;
+            parseSOR(originalBuffer);
+        };
+        reader.readAsArrayBuffer(file);
     }
 
-    function addEvt() {
-        const t = document.getElementById('type').value;
-        const l = parseFloat(document.getElementById('loss').value);
-        let e = { id: Date.now(), type: t, loss: l };
-        if(t === 'point') e.dist = parseFloat(document.getElementById('dist').value);
-        else { e.start = parseFloat(document.getElementById('start').value); e.end = parseFloat(document.getElementById('end').value); }
-        events.push(e); renderList(); update();
-    }
-
-    function renderList() {
-        const el = document.getElementById('eventList'); el.innerHTML = '';
-        events.forEach(e => {
-            let txt = e.type === 'point' ? `@${e.dist}m -${e.loss}dB` : `${e.start}-${e.end}m -${e.loss}dB`;
-            el.innerHTML += `<div class="evt-row"><span>${txt}</span><span class="del" onclick="del(${e.id})">X</span></div>`;
-        });
-    }
-    function del(id) { events = events.filter(e => e.id !== id); renderList(); update(); }
-
-    function getData() {
-        const L = parseFloat(document.getElementById('len').value);
-        const A = parseFloat(document.getElementById('att').value) / 1000;
-        const step = parseFloat(document.getElementById('res').value); 
-        let data = [];
-        let db = 0;
+    function parseSOR(buffer) {
+        const view = new DataView(buffer);
+        let info = "";
         
-        events.sort((a,b) => (a.dist||a.start) - (b.dist||b.start));
+        // Cerca la stringa "DataPts" per trovare l'inizio dei dati
+        // Questo è un parser brutale ma efficace per non rompere l'header
+        const uint8 = new Uint8Array(buffer);
+        let foundPos = -1;
+        
+        // Cerchiamo la sequenza di byte per "DataPts" (68 97 116 97 80 116 115 0)
+        const tag = [68, 97, 116, 97, 80, 116, 115, 0];
+        
+        for(let i=0; i < uint8.length - 20; i++) {
+            let match = true;
+            for(let j=0; j<tag.length; j++) {
+                if(uint8[i+j] !== tag[j]) { match = false; break; }
+            }
+            if(match) {
+                foundPos = i;
+                break;
+            }
+        }
 
-        for(let m=0; m<=L; m+=step) {
-            db += A * step;
+        if(foundPos === -1) {
+            alert("Errore: Non trovo il blocco DataPts nel tuo file. Sei sicuro sia un .SOR valido?");
+            return;
+        }
+
+        // Analizziamo il blocco DataPts
+        // Offset relativi al blocco DataPts secondo standard SR-4731
+        // [Tag String] [Header...]
+        // DataPts Header structure:
+        // NumPoints (4 bytes) offset tag_len + 2
+        // NumTraces (2 bytes)
+        // NumPoints2 (4 bytes)
+        // ScaleFactor (2 bytes)
+        
+        let p = foundPos + tag.length; // Dopo la stringa "DataPts\0"
+        
+        // A volte c'è padding o struttura diversa. Cerchiamo di identificare i numeri logici.
+        // Nel blocco DataPts standard:
+        // bytes 0..3: size of block? No, dipende dalla versione.
+        
+        // Scorciatoia tattica:
+        // Solitamente dopo "DataPts\0" ci sono dei byte di controllo.
+        // I dati reali iniziano dopo l'header del blocco.
+        // Cerchiamo di leggere i parametri dai blocchi precedenti per essere sicuri.
+        // MA per il "Cloning", assumiamo di dover trovare solo dove iniziano i dati grezzi.
+        
+        // In molti file .SOR, i dati iniziano circa 20-30 byte dopo il tag DataPts.
+        // Ma dobbiamo trovare 'NumPoints'.
+        
+        // Proviamo a leggere FxdParams per trovare NumPoints e Distanza
+        const fxdPos = findTag(uint8, "FxdParams");
+        if(fxdPos === -1) { alert("Header non standard."); return; }
+        
+        // FxdParams contiene NumPoints all'offset variabile. 
+        // Facciamo prima: usiamo la lunghezza del file per stimare.
+        
+        // Strategia "Ignorante ma efficace":
+        // I dati sono alla fine, prima del Cksum.
+        // Il blocco DataPts è l'ultimo grande blocco.
+        
+        // Leggiamo Scale Factor e NumPoints dal DataPts block direttamente
+        // Offset tipici dopo la stringa "DataPts\0":
+        // +2 bytes (NumPoints Long?) -> No
+        
+        // Facciamo un tentativo euristico sui dati che hai incollato prima:
+        // Vedo "DataPts...". 
+        
+        // ATTENZIONE: Per modificare i dati senza rompere il file, dobbiamo mantenere 
+        // ESATTAMENTE lo stesso numero di punti del file originale.
+        
+        // Cerchiamo il Cksum alla fine per capire dove finiscono i dati.
+        const cksumPos = findTag(uint8, "Cksum");
+        
+        // Ipotizziamo che i dati siano tra (DataPts Header end) e (Cksum start).
+        // Ogni punto sono 2 byte (unsigned short).
+        
+        // Calcolo approssimativo header DataPts: ~20-30 byte.
+        const dataStartEstimate = foundPos + 20; // Offset iniziale tentativo
+        const dataEndEstimate = cksumPos;
+        const bytesData = dataEndEstimate - dataStartEstimate;
+        
+        // Se i punti sono a 2 byte, numPoints = bytesData / 2.
+        // Controlliamo se è un numero intero sensato.
+        let estimatedPoints = Math.floor(bytesData / 2);
+        
+        // Cerchiamo questo numero nell'header DataPts per confermare
+        // Cerchiamo i byte di 'estimatedPoints' vicino al tag DataPts
+        let confirmedPoints = 0;
+        let finalDataOffset = 0;
+        
+        // Scansiona header DataPts per trovare il numero di punti
+        for(let k=0; k<50; k++) {
+            let val = view.getUint32(foundPos + k, true); // Little endian
+            // Se troviamo un valore vicino alla stima (tolleranza +/- 100 byte di header)
+            if(val > 1000 && val < 100000) {
+                 // Check se (val * 2) + offset == cksumPos approssimativamente
+                 let endCalc = (foundPos + k) + (val * 2);
+                 if (Math.abs(endCalc - cksumPos) < 200) {
+                     confirmedPoints = val;
+                     // I dati iniziano solitamente dopo lo scale factor
+                     // Lo standard dice: offset punti = header + parametri
+                     // Assumiamo che i dati inizino a (cksumPos - confirmedPoints*2)
+                     finalDataOffset = cksumPos - (confirmedPoints * 2);
+                     break;
+                 }
+            }
+        }
+        
+        if(confirmedPoints === 0) {
+             // Fallback: usiamo la stima brutale
+             info += "Attenzione: Struttura complessa. Uso stima dimensioni.\n";
+             confirmedPoints = estimatedPoints; 
+             finalDataOffset = cksumPos - (confirmedPoints * 2);
+        }
+
+        numPoints = confirmedPoints;
+        dataPtsOffset = finalDataOffset;
+        
+        // Lettura Scale Factor (solitamente 1000)
+        // Lo assumiamo 1000 perché è standard Telcordia, a meno che non leggiamo diversamente.
+        
+        info += `File Caricato Correttamente!\n`;
+        info += `Punti Trovati: ${numPoints}\n`;
+        info += `Offset Dati: ${dataPtsOffset}\n`;
+        
+        // Tentiamo di capire la distanza totale leggendo l'ultimo valore originale
+        // O dai GenParams.
+        // Leggiamo i FxdParams per la risoluzione
+        // Ma per semplicità, chiediamo all'utente di confermare la lunghezza o la stimiamo
+        // Assumiamo risoluzione standard
+        
+        fileTotalDist = 0; // Resettiamo
+        // Leggiamo risoluzione dai parametri fissi se possibile, altrimenti default
+        // Invece di parsing complesso, usiamo un default di 0.5m o 1m per punto e lasciamo l'utente correggere
+        // Oppure leggiamo GenParams -> Range
+        
+        document.getElementById('fileInfo').innerText = info;
+        document.getElementById('simStep').style.opacity = "1";
+        document.getElementById('simStep').style.pointerEvents = "auto";
+        document.getElementById('btnSave').disabled = false;
+        
+        // Aggiorna anteprima con dati vuoti
+        updatePreview();
+    }
+
+    function findTag(arr, str) {
+        let tag = [];
+        for(let i=0; i<str.length; i++) tag.push(str.charCodeAt(i));
+        tag.push(0); // Null term
+        
+        for(let i=0; i < arr.length - tag.length; i++) {
+            let match = true;
+            for(let j=0; j<tag.length; j++) {
+                if(arr[i+j] !== tag[j]) { match = false; break; }
+            }
+            if(match) return i;
+        }
+        return -1;
+    }
+
+    // 2. SIMULAZIONE DATI
+    function addEvent() {
+        const type = document.getElementById('evtType').value;
+        const loss = parseFloat(document.getElementById('evtLoss').value);
+        let dist = parseFloat(document.getElementById('evtDist').value);
+        let end = parseFloat(document.getElementById('evtDistEnd').value);
+        
+        if(isNaN(loss) || isNaN(dist)) return;
+        
+        events.push({type, dist, end, loss, id: Date.now()});
+        renderEvents();
+        updatePreview();
+    }
+
+    function renderEvents() {
+        document.getElementById('eventList').innerHTML = events.map(e => 
+            `<div class="evt-row"><span>${e.type} @ ${e.dist}m -${e.loss}dB</span><b style="color:red;cursor:pointer" onclick="delEvt(${e.id})">X</b></div>`
+        ).join('');
+    }
+    window.delEvt = (id) => { events = events.filter(e=>e.id!==id); renderEvents(); updatePreview(); }
+
+    function generateTraceData() {
+        // Genera un array di valori dB lungo ESATTAMENTE quanto numPoints
+        // Dobbiamo mappare la distanza 'virtuale' sui punti fisici del file
+        
+        // Se non conosciamo la distanza reale del file, chiediamo all'utente di fare match
+        // Oppure ipotizziamo una risoluzione fissa.
+        // Nel file caricato c'era 1650nm. Ipotizziamo lunghezza standard.
+        // Usiamo un trucco: Visualizziamo la traccia su un range fittizio e spalmiamo i dati.
+        
+        // Ipotizziamo che il file originale copra X metri.
+        // Ma noi vogliamo simulare quello che dice l'utente.
+        // Tuttavia, per non rompere l'header, NON POSSIAMO cambiare il range totale nel file (è scritto nei FxdParams).
+        // QUINDI: La simulazione si adatterà alla lunghezza del file originale.
+        // (Se il file originale era 5km, la simulazione sarà su 5km).
+        
+        // Generiamo dati
+        let data = new Float32Array(numPoints);
+        let db = 0;
+        let att = parseFloat(document.getElementById('att').value) / 1000; // dB/m
+        
+        // Risoluzione virtuale (metri per punto)
+        // Non la sappiamo esatta, ma assumiamo che l'utente sappia quanto era lungo il file originale
+        // Oppure mettiamo un valore fittizio, tanto è la forma che conta.
+        // Usiamo 1 metro per punto come base.
+        let metersPerPoint = 1.0; 
+        
+        events.sort((a,b) => a.dist - b.dist);
+        
+        for(let i=0; i<numPoints; i++) {
+            let m = i * metersPerPoint;
+            db += att * metersPerPoint;
+            
             for(let e of events) {
-                if(e.type === 'point' && m >= e.dist && (m-step) < e.dist) db += e.loss;
-                else if(e.type === 'interval' && m >= e.start && m <= e.end) {
-                    db += (e.loss / (e.end - e.start)) * step;
+                if(e.type === 'point' && m >= e.dist && (m-metersPerPoint) < e.dist) {
+                    db += e.loss;
+                } else if(e.type === 'interval' && m >= e.start && m <= e.end) {
+                    let range = e.end - e.start;
+                    if(range > 0) db += (e.loss / range) * metersPerPoint;
                 }
             }
-            let noise = (Math.random() - 0.5) * 0.02;
-            data.push({ x: m, y: db + noise });
+            
+            // Rumore
+            data[i] = db + (Math.random()-0.5)*0.02;
         }
+        
         return data;
     }
 
-    function update() {
-        chart.data.datasets[0].data = getData();
-        if(!chart.isZoomed) { chart.options.scales.x.max = parseFloat(document.getElementById('len').value); chart.options.scales.x.min = 0; }
+    function updatePreview() {
+        if(numPoints === 0) return;
+        const d = generateTraceData();
+        // Downsample per preview veloce
+        const viewData = [];
+        const step = Math.ceil(d.length / 500);
+        for(let i=0; i<d.length; i+=step) viewData.push({x: i, y: d[i]});
+        
+        chart.data.datasets[0].data = viewData;
         chart.update();
     }
 
-    // Zoom Functions
-    chart.isZoomed = false;
-    function zoom(f) {
-        chart.isZoomed = true;
-        const s = chart.options.scales.x;
-        const r = s.max - s.min;
-        const c = s.min + r/2;
-        const nr = r * f;
-        s.min = Math.max(0, c - nr/2);
-        s.max = Math.min(parseFloat(document.getElementById('len').value), c + nr/2);
-        document.getElementById('pan').disabled = false;
-        chart.update();
-    }
-    function resetZoom() {
-        chart.isZoomed = false;
-        chart.options.scales.x.min = 0;
-        chart.options.scales.x.max = parseFloat(document.getElementById('len').value);
-        document.getElementById('pan').disabled = true;
-        chart.update();
-    }
-    function pan(v) {
-        if(!chart.isZoomed) return;
-        const max = parseFloat(document.getElementById('len').value);
-        const s = chart.options.scales.x;
-        const r = s.max - s.min;
-        const free = max - r;
-        const nMin = (v/100) * free;
-        s.min = nMin; s.max = nMin + r;
-        chart.update();
-    }
-
-    // --- MOTORE BINARIO SOR (TELCORDIA SR-4731) ---
-    // Questa parte scrive byte per byte il file secondo lo standard
-    
-    function generateRealSOR() {
-        const dataPoints = getData();
-        const numPoints = dataPoints.length;
-        const totalDist = dataPoints[numPoints-1].x;
+    // 3. SALVATAGGIO E INIEZIONE
+    function saveModifiedSOR() {
+        if(!originalBuffer) return;
         
-        // BUFFER PREPARAZIONE (Stimiamo 50KB + dati)
-        const buffer = new ArrayBuffer(100000 + numPoints * 4);
-        const view = new DataView(buffer);
-        let p = 0; // Cursore posizione
-
-        // Helper functions
-        function wStr(s) { for(let i=0; i<s.length; i++) view.setUint8(p++, s.charCodeAt(i)); view.setUint8(p++, 0); }
-        function wU16(v) { view.setUint16(p, v, true); p+=2; } // Little Endian
-        function wU32(v) { view.setUint32(p, v, true); p+=4; }
-        function wI16(v) { view.setInt16(p, v, true); p+=2; }
-        function wI32(v) { view.setInt32(p, v, true); p+=4; }
+        const simData = generateTraceData();
+        // Clona buffer
+        const newBuffer = originalBuffer.slice(0);
+        const view = new DataView(newBuffer);
+        const uint8 = new Uint8Array(newBuffer);
         
-        // 1. MAP BLOCK
-        const mapPos = p;
-        wStr("Map");
-        wU16(200); // Version 2.0
-        wU32(0);   // Map Size (fill later)
-        wU16(4);   // Num Blocks (GenParams, SupParams, FxdParams, DataPts)
-
-        // Block Definitions (ID, Rev, Size, Offset) - Placeholder positions
-        const blkDefs = [];
-        function addBlkDef(name) {
-            wStr(name);
-            wU16(200); // Rev
-            const sizePos = p; wU32(0); 
-            const offPos = p; wU32(0);
-            blkDefs.push({name, sizePos, offPos, start: 0});
-        }
+        // SOVRASCRIVIAMO I DATI
+        // I dati nello standard sono (ValoreDB * 1000) come unsigned short (2 bytes)
+        // Offset di base: 50dB o simile.
+        // Telcordia usa numeri relativi. Spesso 0xFFFF è saturazione.
+        // Dobbiamo scalare i nostri dB (0..10..) in valori unsigned short (65535..0..).
+        // Solitamente: ValoreSOR = (MaxLevel - Attenuazione) * 1000.
         
-        addBlkDef("GenParams");
-        addBlkDef("SupParams");
-        addBlkDef("FxdParams");
-        addBlkDef("DataPts"); // Standard name
-        // Non mettiamo Checksum nella Map, va alla fine
-
-        // Update Map Size
-        const mapEnd = p;
-        view.setUint32(mapPos + 3 + 2, mapEnd - mapPos, true); // Size
-
-        // 2. GENPARAMS
-        blkDefs[0].start = p;
-        view.setUint32(blkDefs[0].offPos, p, true); // Update Map offset
-        
-        wStr("GenParams");
-        wStr("IT"); // Lang
-        wStr("SIM-001"); // Cable ID
-        wStr("FIBER-01"); // Fiber ID
-        wU16(1650); // Wavelength (nm)
-        wU32(totalDist * 10000); // Loc A (non usato molto)
-        wU32(0); // Loc B
-        wU32(0); // Cable Code
-        wStr("OT"); // Build Cond
-        wStr("Nicola"); // Operator
-        wStr("Simulated Trace"); // Comment
-        
-        // Calcolo parametri pulsazioni
-        const pulseWidth = 100; // ns
-        const range = totalDist / 1000; // km
-        wU16(pulseWidth); 
-        wU32(range * 100000); // Range in cm? standard varies
-        wU32(numPoints); // Number of data points
-        wI32(14680); // Group Index (1.4680 * 10000)
-        wI16(0); // Avg
-        wU16(0); // Avg Time
-        wU32(0); // Aq Range
-        wI16(0); // Aq Offset
-        wU16(0); // Lasr Att
-        wU16(0); // System settings
-        wU16(0); 
-        wU16(0);
-        
-        // Update GenParams Size
-        view.setUint32(blkDefs[0].sizePos, p - blkDefs[0].start, true);
-
-        // 3. SUPPARAMS
-        blkDefs[1].start = p;
-        view.setUint32(blkDefs[1].offPos, p, true);
-        wStr("SupParams");
-        wStr("GeminiSimulator"); // Supplier
-        wStr("V7.0"); // Mainframe
-        wStr("12345"); // SN
-        wStr("ModA"); // Module
-        wStr("56789"); // Mod SN
-        wStr("1.0"); // Soft Rev
-        wStr("NoOther"); 
-        view.setUint32(blkDefs[1].sizePos, p - blkDefs[1].start, true);
-
-        // 4. FXDPARAMS
-        blkDefs[2].start = p;
-        view.setUint32(blkDefs[2].offPos, p, true);
-        wStr("FxdParams");
-        wU32(Date.now() / 1000); // Time stamp
-        wStr("km"); // Units
-        wStr("1650"); // Wavelength act
-        wI32(0); // Acquisition offset
-        wI32(numPoints); // Num points again
-        wU16(numPoints); // Pulse width used index
-        wU32(10000); // Sample spacing (cm * 10000) -> Qui trucco: risoluzione
-        
-        // Calcolo spaziatura esatta
-        const spacingMeters = totalDist / numPoints;
-        const spacingCm = spacingMeters * 100;
-        const spacingInt = spacingCm * 10000; 
-        
-        // Riscrivo spacing
-        p -= 4; 
-        wU32(parseInt(spacingInt)); 
-        
-        wU32(numPoints); 
-        wI32(14680); // IOR
-        wU16(0); // BC
-        wU32(0); 
-        view.setUint32(blkDefs[2].sizePos, p - blkDefs[2].start, true);
-
-        // 5. DATAPTS (Main Data)
-        blkDefs[3].start = p;
-        view.setUint32(blkDefs[3].offPos, p, true);
-        wStr("DataPts");
-        wU32(numPoints); 
-        wU16(1); // Num traces
-        wU32(numPoints); // Num points
-        wU16(1000); // Scale factor (standard is values are multiplied by 1000)
-        
-        // Scriviamo i punti
-        // Nel formato SOR standard Telcordia, i dati sono unsigned short (2 byte)
-        // moltiplicati per il fattore di scala.
-        // dB = value / 1000
-        
-        // Attenzione: In OTDR, i valori alti sono "riflessioni", valori bassi attenuazione.
-        // Ma di solito si memorizzano valori relativi al livello di rumore o assoluti.
-        // Usiamo un offset alto (es. 50dB) e sottraiamo la perdita.
-        
-        const maxDB = 50.0; // Punto di partenza fittizio
+        const maxLevelDB = 50.0; // Livello iniezione fittizio alto
         
         for(let i=0; i<numPoints; i++) {
-            let valDB = maxDB - dataPoints[i].y; 
-            if(valDB < 0) valDB = 0;
-            let valInt = parseInt(valDB * 1000);
-            wU16(valInt);
+            let val = simData[i];
+            let sorVal = (maxLevelDB - val) * 1000;
+            if(sorVal < 0) sorVal = 0;
+            if(sorVal > 65535) sorVal = 65535;
+            
+            // Scrivi all'offset corretto (2 byte per punto)
+            view.setUint16(dataPtsOffset + (i*2), parseInt(sorVal), true); // Little Endian
         }
-        
-        view.setUint32(blkDefs[3].sizePos, p - blkDefs[3].start, true);
 
-        // 6. CHECKSUM BLOCK (Critico per Viewer)
-        const cksumStart = p;
-        wStr("Cksum");
-        const cksumValPos = p; 
-        wU16(0); // Placeholder
-        
-        // Calcolo CRC-16 (CCITT) su tutto il file finora
-        const content = new Uint8Array(buffer, 0, p);
-        let crc = 0; // Init CRC
-        
-        // Standard CRC-16 implementation used in Telcordia
-        // Polynomial 0x1021 usually, specific logic implies iterating bits
-        // Semplificazione: somma i byte e mascheramento (molti viewer accettano questo come fallback)
-        // Oppure implementazione reale CRC16-CCITT
-        
-        crc = calculateCRC16(content);
-        
-        // Scrivi CRC
-        view.setUint16(cksumValPos, crc, true);
+        // AGGIORNA CHECKSUM
+        // Troviamo il blocco Cksum alla fine
+        const cksumPos = findTag(uint8, "Cksum");
+        if(cksumPos !== -1) {
+            // Calcola CRC16 fino al valore del checksum
+            // La posizione del valore del checksum è cksumPos + stringa(6) + 2 bytes null = +8?
+            // "Cksum\0" = 6 bytes. Poi c'è il valore (2 bytes).
+            // Lo standard dice che il checksum copre tutto il file fino al checksum escluso.
+            
+            const contentToCheck = new Uint8Array(newBuffer, 0, cksumPos + 6); // Include "Cksum\0"
+            // Reset checksum value to 0 before calc? No, usually calc up to header.
+            
+            // Per sicurezza, ricalcoliamo il CRC sull'intero file eccetto gli ultimi 2 byte, 
+            // poi scriviamo il risultato negli ultimi 2 byte.
+            // Ma la posizione del valore Cksum varia.
+            
+            // Metodo empirico: Scrivi 0 nel valore Cksum, calcola CRC, scrivi CRC.
+            // Il valore Cksum è solitamente gli ultimi 2 byte del blocco Cksum.
+            // Assumiamo che il valore sia a cksumPos + 6.
+            
+            view.setUint16(cksumPos + 6, 0, true); // Azzera
+            
+            // Calcolo CRC su tutto il file fino a cksumPos+6
+            // In realtà lo standard Telcordia dice: "Sum of all bytes in file modulo 65535" oppure CRC-CCITT.
+            // Anritsu usa CRC-CCITT (0x1021).
+            
+            const dataToCrc = new Uint8Array(newBuffer, 0, cksumPos + 6);
+            const newCrc = calculateCRC16(dataToCrc);
+            
+            view.setUint16(cksumPos + 6, newCrc, true);
+        }
 
-        // --- DOWNLOAD ---
-        const finalBuffer = new Uint8Array(buffer, 0, p);
-        const blob = new Blob([finalBuffer], {type: "application/octet-stream"});
+        // Download
+        const blob = new Blob([newBuffer], {type: "application/octet-stream"});
         const url = URL.createObjectURL(blob);
         const a = document.createElement("a");
         a.href = url;
-        a.download = "Simulazione_Nicola_V7.sor";
+        a.download = "Traccia_Modificata_OK.sor";
         a.click();
     }
 
-    // Algoritmo CRC16 standard per file SOR
     function calculateCRC16(data) {
         let crc = 0;
         for (let i = 0; i < data.length; i++) {
@@ -368,8 +423,6 @@
         }
         return crc;
     }
-
-    update();
 </script>
 
 </body>
