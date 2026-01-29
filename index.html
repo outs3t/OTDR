@@ -2,240 +2,267 @@
 <html lang="it">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Generatore OTDR V4 - Raw Data</title>
+    <title>OTDR Generator V7 - Binary Engine</title>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <style>
-        body { font-family: 'Segoe UI', sans-serif; background: #f4f6f9; padding: 20px; }
-        .container { max-width: 1200px; margin: 0 auto; background: white; padding: 20px; border-radius: 10px; box-shadow: 0 4px 10px rgba(0,0,0,0.1); }
-        h1 { color: #2c3e50; text-align: center; }
-        .grid { display: grid; grid-template-columns: 1fr 2fr; gap: 20px; }
-        .controls { background: #eef2f7; padding: 15px; border-radius: 8px; }
-        .btn { padding: 12px; border: none; border-radius: 5px; cursor: pointer; width: 100%; margin-bottom: 10px; font-weight: bold; color: white; }
-        .btn-add { background: #3498db; }
-        .btn-raw { background: #8e44ad; font-size: 1.1em; } /* Viola per distinguere */
-        .btn-zoom { background: #95a5a6; width: 32%; display: inline-block; }
-        input, select { width: 100%; padding: 8px; margin: 5px 0 15px 0; border: 1px solid #ccc; border-radius: 4px; box-sizing: border-box; }
-        label { font-weight: bold; font-size: 0.9em; }
-        #eventList { height: 150px; overflow-y: auto; background: #fff; border: 1px solid #ddd; padding: 5px; margin-bottom: 10px; }
-        .event-item { font-size: 0.85em; border-bottom: 1px solid #eee; padding: 4px; display: flex; justify-content: space-between; }
-        .note { font-size: 0.8em; color: #c0392b; background: #fadbd8; padding: 10px; border-radius: 4px; margin-top: 10px; border: 1px solid #e6b0aa; }
+        body { font-family: 'Segoe UI', Arial, sans-serif; background: #f0f2f5; padding: 20px; color: #333; }
+        .container { max-width: 1200px; margin: 0 auto; display: grid; grid-template-columns: 350px 1fr; gap: 20px; }
+        .panel { background: white; padding: 20px; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
+        h2 { color: #0056b3; border-bottom: 2px solid #eee; padding-bottom: 10px; margin-top: 0; }
+        label { display: block; font-weight: bold; margin-top: 10px; font-size: 0.9em; }
+        input, select { width: 100%; padding: 8px; margin-top: 5px; border: 1px solid #ccc; border-radius: 4px; box-sizing: border-box; }
+        .btn { width: 100%; padding: 12px; border: none; border-radius: 5px; margin-top: 10px; cursor: pointer; font-weight: bold; color: white; transition: 0.2s; }
+        .btn-add { background: #007bff; }
+        .btn-add:hover { background: #0056b3; }
+        .btn-gen { background: #28a745; font-size: 1.1em; margin-top: 20px; }
+        .btn-gen:hover { background: #218838; }
+        .zoom-bar { display: flex; gap: 5px; margin-top: 10px; justify-content: center; }
+        .btn-zoom { background: #6c757d; color: white; padding: 5px 15px; border: none; border-radius: 4px; cursor: pointer; }
+        #eventList { max-height: 200px; overflow-y: auto; margin-top: 10px; border: 1px solid #eee; }
+        .evt-row { padding: 8px; border-bottom: 1px solid #eee; display: flex; justify-content: space-between; font-size: 0.9em; }
+        .del { color: red; cursor: pointer; font-weight: bold; }
     </style>
 </head>
 <body>
 
 <div class="container">
-    <h1>Generatore OTDR "Clean Data"</h1>
-    
-    <div class="grid">
-        <div class="controls">
-            <label>Lunghezza (metri)</label>
-            <input type="number" id="totalLength" value="2000" onchange="updateGraph()">
-            
-            <label>Attenuazione (dB/km)</label>
-            <input type="number" id="fiberLoss" value="0.25" step="0.01" onchange="updateGraph()">
+    <div class="panel">
+        <h2>1. Parametri Fibra</h2>
+        <label>Lunghezza (metri)</label>
+        <input type="number" id="len" value="2000" onchange="update()">
+        <label>Attenuazione (dB/km)</label>
+        <input type="number" id="att" value="0.25" step="0.01" onchange="update()">
+        <label>Risoluzione (punti/metro)</label>
+        <select id="res">
+            <option value="1">1 punto ogni metro (Veloce)</option>
+            <option value="0.5">2 punti ogni metro (Alta Qualità)</option>
+        </select>
 
-            <hr>
-            <label>Tipo Evento</label>
-            <select id="eventType" onchange="toggleEventInputs()">
-                <option value="point">Evento Puntuale (es. Giunto)</option>
-                <option value="interval">Intervallo (es. Curva/Stress)</option>
-            </select>
-
-            <div id="pointInput">
-                <label>Distanza (m)</label>
-                <input type="number" id="eventDist" placeholder="es. 1000">
-            </div>
-            <div id="intervalInput" style="display:none;">
-                <label>Da (m)</label>
-                <input type="number" id="eventStart" placeholder="1000">
-                <label>A (m)</label>
-                <input type="number" id="eventEnd" placeholder="1020">
-            </div>
-
-            <label>Perdita (dB)</label>
-            <input type="number" id="eventLoss" placeholder="0.5" step="0.05">
-
-            <button class="btn btn-add" onclick="addEvent()">Aggiungi Evento</button>
-            <div id="eventList"></div>
-
-            <hr>
-            <button class="btn btn-raw" onclick="generateRawTXT()">💾 SCARICA RAW DATA (.TXT)</button>
-            
-            <div class="note">
-                <strong>IMPORTANTE PER FIBER TRACE:</strong><br>
-                1. Non usare "Apri".<br>
-                2. Vai su <em>File > Import (o Import ASCII)</em>.<br>
-                3. Se chiede i delimitatori: Scegli <strong>TAB</strong>.<br>
-                4. Questo file non ha intestazioni, sono solo numeri puri per evitare errori Heading.
-            </div>
+        <h2>2. Eventi</h2>
+        <label>Tipo</label>
+        <select id="type" onchange="toggleInputs()">
+            <option value="point">📍 Picco/Giunto</option>
+            <option value="interval">↔️ Intervallo</option>
+        </select>
+        
+        <div id="pInput">
+            <label>Distanza (m)</label>
+            <input type="number" id="dist" placeholder="1000">
         </div>
-
-        <div>
-            <canvas id="otdrChart"></canvas>
-            <div style="text-align:center; margin-top:10px;">
-                <button class="btn btn-zoom" onclick="zoomChart(0.5)">🔍 Zoom +</button>
-                <button class="btn btn-zoom" onclick="resetZoom()">🔄 Reset</button>
-                <button class="btn btn-zoom" onclick="zoomChart(1.5)">🔍 Zoom -</button>
-                <br>
-                <input type="range" id="panRange" min="0" max="100" value="0" style="width:80%; margin-top:10px;" oninput="panChart(this.value)" disabled>
-            </div>
+        <div id="iInput" style="display:none">
+            <label>Inizio (m)</label>
+            <input type="number" id="start" placeholder="1000">
+            <label>Fine (m)</label>
+            <input type="number" id="end" placeholder="1020">
         </div>
+        
+        <label>Perdita (dB)</label>
+        <input type="number" id="loss" placeholder="0.5" step="0.1">
+        
+        <button class="btn btn-add" onclick="addEvt()">Aggiungi Evento</button>
+        <div id="eventList"></div>
+
+        <button class="btn btn-gen" onclick="generateRealSOR()">GENERA SOR BINARIO<br><small>(Compatibile Viewer)</small></button>
+    </div>
+
+    <div class="panel">
+        <div style="height: 500px; position: relative;">
+            <canvas id="chart"></canvas>
+        </div>
+        <div class="zoom-bar">
+            <button class="btn-zoom" onclick="zoom(0.8)">Zoom In (+)</button>
+            <button class="btn-zoom" onclick="resetZoom()">Reset</button>
+            <button class="btn-zoom" onclick="zoom(1.2)">Zoom Out (-)</button>
+        </div>
+        <input type="range" id="pan" style="width:100%" disabled oninput="pan(this.value)">
     </div>
 </div>
 
 <script>
-    let chart;
+    // --- MOTORE GRAFICO ---
     let events = [];
-
-    window.onload = function() {
-        const ctx = document.getElementById('otdrChart').getContext('2d');
-        chart = new Chart(ctx, {
-            type: 'line',
-            data: {
-                datasets: [{
-                    label: 'Traccia dB',
-                    data: [],
-                    borderColor: '#2ecc71',
-                    borderWidth: 1.5,
-                    pointRadius: 0,
-                    fill: false,
-                    tension: 0.1
-                }]
-            },
-            options: {
-                animation: false,
-                scales: {
-                    x: { type: 'linear', position: 'bottom', title: {display:true, text:'Metri'} },
-                    y: { reverse: true, title: {display:true, text:'dB'} }
-                }
-            }
-        });
-        updateGraph();
-    };
-
-    function toggleEventInputs() {
-        const type = document.getElementById('eventType').value;
-        document.getElementById('pointInput').style.display = type === 'point' ? 'block' : 'none';
-        document.getElementById('intervalInput').style.display = type === 'interval' ? 'block' : 'none';
-    }
-
-    function addEvent() {
-        const type = document.getElementById('eventType').value;
-        const loss = parseFloat(document.getElementById('eventLoss').value);
-        if(isNaN(loss)) return;
-
-        let newEvt = { loss: loss, id: Date.now(), type: type };
-        
-        if (type === 'point') {
-            newEvt.dist = parseFloat(document.getElementById('eventDist').value);
-        } else {
-            newEvt.start = parseFloat(document.getElementById('eventStart').value);
-            newEvt.end = parseFloat(document.getElementById('eventEnd').value);
-        }
-        events.push(newEvt);
-        renderEvents();
-        updateGraph();
-    }
-
-    function renderEvents() {
-        const list = document.getElementById('eventList');
-        list.innerHTML = "";
-        events.forEach(e => {
-            let txt = e.type==='point' ? `@${e.dist}m -${e.loss}dB` : `Int ${e.start}-${e.end}m -${e.loss}dB`;
-            list.innerHTML += `<div class="event-item"><span>${txt}</span><span style="color:red;cursor:pointer" onclick="delEvent(${e.id})">X</span></div>`;
-        });
-    }
+    let chart;
+    const ctx = document.getElementById('chart').getContext('2d');
     
-    function delEvent(id) {
-        events = events.filter(e => e.id !== id);
-        renderEvents();
-        updateGraph();
+    chart = new Chart(ctx, {
+        type: 'line',
+        data: { datasets: [{ label: 'Traccia dB', borderColor: '#0056b3', borderWidth: 1.5, pointRadius: 0, data: [] }] },
+        options: {
+            maintainAspectRatio: false, animation: false,
+            scales: { x: { type: 'linear', title: {display:true, text:'Metri'} }, y: { reverse: true, title: {display:true, text:'dB'} } }
+        }
+    });
+
+    function toggleInputs() {
+        const t = document.getElementById('type').value;
+        document.getElementById('pInput').style.display = t === 'point' ? 'block' : 'none';
+        document.getElementById('iInput').style.display = t === 'interval' ? 'block' : 'none';
     }
 
-    function calculateData() {
-        const len = parseFloat(document.getElementById('totalLength').value);
-        const att = parseFloat(document.getElementById('fiberLoss').value) / 1000; // dB per metro
-        const step = 1; // 1 punto per metro per massima compatibilità
-        
+    function addEvt() {
+        const t = document.getElementById('type').value;
+        const l = parseFloat(document.getElementById('loss').value);
+        let e = { id: Date.now(), type: t, loss: l };
+        if(t === 'point') e.dist = parseFloat(document.getElementById('dist').value);
+        else { e.start = parseFloat(document.getElementById('start').value); e.end = parseFloat(document.getElementById('end').value); }
+        events.push(e); renderList(); update();
+    }
+
+    function renderList() {
+        const el = document.getElementById('eventList'); el.innerHTML = '';
+        events.forEach(e => {
+            let txt = e.type === 'point' ? `@${e.dist}m -${e.loss}dB` : `${e.start}-${e.end}m -${e.loss}dB`;
+            el.innerHTML += `<div class="evt-row"><span>${txt}</span><span class="del" onclick="del(${e.id})">X</span></div>`;
+        });
+    }
+    function del(id) { events = events.filter(e => e.id !== id); renderList(); update(); }
+
+    function getData() {
+        const L = parseFloat(document.getElementById('len').value);
+        const A = parseFloat(document.getElementById('att').value) / 1000;
+        const step = parseFloat(document.getElementById('res').value); 
         let data = [];
-        let currLoss = 0;
+        let db = 0;
         
         events.sort((a,b) => (a.dist||a.start) - (b.dist||b.start));
 
-        for(let m=0; m<=len; m+=step) {
-            currLoss += att * step;
-            
+        for(let m=0; m<=L; m+=step) {
+            db += A * step;
             for(let e of events) {
-                if(e.type === 'point' && m >= e.dist && (m-step) < e.dist) {
-                    currLoss += e.loss;
-                } else if (e.type === 'interval' && m >= e.start && m <= e.end) {
-                    currLoss += (e.loss / (e.end - e.start)) * step;
+                if(e.type === 'point' && m >= e.dist && (m-step) < e.dist) db += e.loss;
+                else if(e.type === 'interval' && m >= e.start && m <= e.end) {
+                    db += (e.loss / (e.end - e.start)) * step;
                 }
             }
-            // Rumore minimo per realismo (Fiber Trace lo apprezza)
-            let noise = (Math.random() - 0.5) * 0.01;
-            data.push({ x: m, y: currLoss + noise });
+            let noise = (Math.random() - 0.5) * 0.02;
+            data.push({ x: m, y: db + noise });
         }
         return data;
     }
 
-    function updateGraph() {
-        const d = calculateData();
-        chart.data.datasets[0].data = d;
-        chart.options.scales.x.max = parseFloat(document.getElementById('totalLength').value);
-        document.getElementById('panRange').disabled = false;
+    function update() {
+        chart.data.datasets[0].data = getData();
+        if(!chart.isZoomed) { chart.options.scales.x.max = parseFloat(document.getElementById('len').value); chart.options.scales.x.min = 0; }
         chart.update();
     }
 
-    // --- ZOOM ---
-    function zoomChart(fact) {
+    // Zoom Functions
+    chart.isZoomed = false;
+    function zoom(f) {
+        chart.isZoomed = true;
         const s = chart.options.scales.x;
-        const range = s.max - s.min;
-        const center = s.min + range/2;
-        const newRange = range * fact;
-        const maxL = parseFloat(document.getElementById('totalLength').value);
-        
-        s.min = Math.max(0, center - newRange/2);
-        s.max = Math.min(maxL, center + newRange/2);
+        const r = s.max - s.min;
+        const c = s.min + r/2;
+        const nr = r * f;
+        s.min = Math.max(0, c - nr/2);
+        s.max = Math.min(parseFloat(document.getElementById('len').value), c + nr/2);
+        document.getElementById('pan').disabled = false;
         chart.update();
     }
     function resetZoom() {
+        chart.isZoomed = false;
         chart.options.scales.x.min = 0;
-        chart.options.scales.x.max = parseFloat(document.getElementById('totalLength').value);
+        chart.options.scales.x.max = parseFloat(document.getElementById('len').value);
+        document.getElementById('pan').disabled = true;
         chart.update();
     }
-    function panChart(val) {
+    function pan(v) {
+        if(!chart.isZoomed) return;
+        const max = parseFloat(document.getElementById('len').value);
         const s = chart.options.scales.x;
-        const rng = s.max - s.min;
-        const maxL = parseFloat(document.getElementById('totalLength').value);
-        const newMin = (val/100) * (maxL - rng);
-        s.min = newMin;
-        s.max = newMin + rng;
+        const r = s.max - s.min;
+        const free = max - r;
+        const nMin = (v/100) * free;
+        s.min = nMin; s.max = nMin + r;
         chart.update();
     }
 
-    // --- ESPORTAZIONE RAW PER FIBER TRACE ---
-    function generateRawTXT() {
-        const d = calculateData();
-        // NESSUN HEADER: Solo numeri per evitare "Heading Error"
-        // Formato: Distanza(km) [TAB] Potenza(dB)
-        let txt = ""; 
+    // --- MOTORE BINARIO SOR (TELCORDIA SR-4731) ---
+    // Questa parte scrive byte per byte il file secondo lo standard
+    
+    function generateRealSOR() {
+        const dataPoints = getData();
+        const numPoints = dataPoints.length;
+        const totalDist = dataPoints[numPoints-1].x;
         
-        d.forEach(p => {
-            // Fiber Trace preferisce i KM e usa il punto come decimale
-            let km = (p.x / 1000).toFixed(6); 
-            let db = p.y.toFixed(5);
-            txt += `${km}\t${db}\r\n`;
-        });
+        // BUFFER PREPARAZIONE (Stimiamo 50KB + dati)
+        const buffer = new ArrayBuffer(100000 + numPoints * 4);
+        const view = new DataView(buffer);
+        let p = 0; // Cursore posizione
 
-        const blob = new Blob([txt], {type: 'text/plain'});
-        const a = document.createElement('a');
-        a.href = URL.createObjectURL(blob);
-        a.download = "Traccia_RAW_Importami.txt";
-        a.click();
-        alert("File generato! Ora vai su Fiber Trace -> Importa ASCII -> Seleziona questo file.");
-    }
-</script>
-</body>
-</html>
+        // Helper functions
+        function wStr(s) { for(let i=0; i<s.length; i++) view.setUint8(p++, s.charCodeAt(i)); view.setUint8(p++, 0); }
+        function wU16(v) { view.setUint16(p, v, true); p+=2; } // Little Endian
+        function wU32(v) { view.setUint32(p, v, true); p+=4; }
+        function wI16(v) { view.setInt16(p, v, true); p+=2; }
+        function wI32(v) { view.setInt32(p, v, true); p+=4; }
+        
+        // 1. MAP BLOCK
+        const mapPos = p;
+        wStr("Map");
+        wU16(200); // Version 2.0
+        wU32(0);   // Map Size (fill later)
+        wU16(4);   // Num Blocks (GenParams, SupParams, FxdParams, DataPts)
+
+        // Block Definitions (ID, Rev, Size, Offset) - Placeholder positions
+        const blkDefs = [];
+        function addBlkDef(name) {
+            wStr(name);
+            wU16(200); // Rev
+            const sizePos = p; wU32(0); 
+            const offPos = p; wU32(0);
+            blkDefs.push({name, sizePos, offPos, start: 0});
+        }
+        
+        addBlkDef("GenParams");
+        addBlkDef("SupParams");
+        addBlkDef("FxdParams");
+        addBlkDef("DataPts"); // Standard name
+        // Non mettiamo Checksum nella Map, va alla fine
+
+        // Update Map Size
+        const mapEnd = p;
+        view.setUint32(mapPos + 3 + 2, mapEnd - mapPos, true); // Size
+
+        // 2. GENPARAMS
+        blkDefs[0].start = p;
+        view.setUint32(blkDefs[0].offPos, p, true); // Update Map offset
+        
+        wStr("GenParams");
+        wStr("IT"); // Lang
+        wStr("SIM-001"); // Cable ID
+        wStr("FIBER-01"); // Fiber ID
+        wU16(1650); // Wavelength (nm)
+        wU32(totalDist * 10000); // Loc A (non usato molto)
+        wU32(0); // Loc B
+        wU32(0); // Cable Code
+        wStr("OT"); // Build Cond
+        wStr("Nicola"); // Operator
+        wStr("Simulated Trace"); // Comment
+        
+        // Calcolo parametri pulsazioni
+        const pulseWidth = 100; // ns
+        const range = totalDist / 1000; // km
+        wU16(pulseWidth); 
+        wU32(range * 100000); // Range in cm? standard varies
+        wU32(numPoints); // Number of data points
+        wI32(14680); // Group Index (1.4680 * 10000)
+        wI16(0); // Avg
+        wU16(0); // Avg Time
+        wU32(0); // Aq Range
+        wI16(0); // Aq Offset
+        wU16(0); // Lasr Att
+        wU16(0); // System settings
+        wU16(0); 
+        wU16(0);
+        
+        // Update GenParams Size
+        view.setUint32(blkDefs[0].sizePos, p - blkDefs[0].start, true);
+
+        // 3. SUPPARAMS
+        blkDefs[1].start = p;
+        view.setUint32(blkDefs[1].offPos, p, true);
+        wStr("SupParams");
+        wStr("GeminiSimulator"); // Supplier
+        wStr("V7.0"); // Mainframe
+        wStr("12345
